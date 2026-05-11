@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>doclayer — meta-harness for collaborative writing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  body { background: var(--bg); }
+  .hero-anim {
+    margin-top: 32px;
+    margin-bottom: 56px;
+    height: 220px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+  }
+  .hero-pane {
+    flex: 1;
+    border-right: 1px solid var(--border-soft);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    opacity: 0;
+    animation: fadeIn 800ms ease both;
+  }
+  .hero-pane:last-child { border-right: none; }
+  .hero-pane.p1 { animation-delay: 0.0s; }
+  .hero-pane.p2 { animation-delay: 0.6s; }
+  .hero-pane.p3 { animation-delay: 1.2s; }
+  .hero-pane.p4 { animation-delay: 1.8s; }
+  .hero-label {
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .hero-bar {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    width: 80%;
+    overflow: hidden;
+  }
+  .hero-bar.short { width: 50%; }
+  .hero-bar.tiny { width: 30%; }
+  .hero-bar .fill {
+    height: 100%;
+    background: var(--accent);
+    width: 0;
+    animation: fillBar 1.4s ease-out forwards;
+  }
+  .hero-pane.p2 .hero-bar .fill { animation-delay: 0.8s; }
+  .hero-pane.p3 .hero-bar .fill { animation-delay: 1.4s; }
+  .hero-pane.p4 .hero-bar .fill { animation-delay: 2.0s; background: var(--vishal); }
+  @keyframes fillBar { from { width: 0; } to { width: 100%; } }
+
+  .vs-frame {
+    margin: 28px 0 8px;
+    padding: 14px 18px;
+    border-top: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border-soft);
+    font-family: var(--code);
+    font-size: 12.5px;
+    line-height: 1.9;
+    color: var(--text-muted);
+    letter-spacing: 0.01em;
+  }
+  .vs-frame .row { display: flex; align-items: baseline; gap: 12px; }
+  .vs-frame .who { color: var(--text-2); min-width: 92px; }
+  .vs-frame .who.us { color: var(--accent); }
+  .vs-frame em { color: var(--text); font-style: italic; }
+
+  .footer {
+    margin-top: 64px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .footer code {
+    font-family: var(--code);
+    background: var(--panel);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--text-2);
+  }
+
+  /* Lifecycle hero card — the "play the whole thing" button */
+  .lifecycle-card {
+    display: block;
+    margin: 0 0 28px;
+    padding: 32px 36px;
+    background: linear-gradient(120deg, #0d1a08 0%, var(--panel) 60%, #1a0d12 100%);
+    border: 1px solid var(--accent);
+    border-radius: var(--r-lg);
+    cursor: pointer;
+    transition: all 280ms ease;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(149,227,93,0.06), 0 12px 40px rgba(0,0,0,0.35);
+  }
+  .lifecycle-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(600px 200px at 20% 50%, rgba(149,227,93,0.07), transparent 60%);
+    pointer-events: none;
+  }
+  .lifecycle-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(149,227,93,0.10), 0 16px 48px rgba(0,0,0,0.45);
+    text-decoration: none;
+  }
+  .lc-badge {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #0a1408;
+    background: var(--accent);
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    z-index: 2;
+  }
+  .lifecycle-card .lc-row {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    position: relative;
+    z-index: 1;
+  }
+  .lifecycle-card .lc-play {
+    flex-shrink: 0;
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #0a1408;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    box-shadow: 0 0 0 4px rgba(149,227,93,0.12), 0 0 24px rgba(149,227,93,0.25);
+  }
+  .lifecycle-card .lc-text { flex: 1; }
+  .lifecycle-card .lc-num {
+    font-family: var(--code);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.14em;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .lifecycle-card .lc-num .pip {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  .lifecycle-card h3 {
+    margin: 0 0 6px;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+  .lifecycle-card p {
+    margin: 0;
+    color: var(--text-2);
+    font-size: 14px;
+    line-height: 1.55;
+    max-width: 640px;
+  }
+  .lifecycle-card .lc-strip {
+    display: flex;
+    gap: 4px;
+    margin-top: 14px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    flex-wrap: wrap;
+  }
+  .lifecycle-card .lc-strip span {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+  }
+  .lifecycle-card .lc-strip span.pl { color: var(--accent); border-color: #95e35d44; }
+  .lifecycle-card .lc-strip span.dr { color: var(--vishal); border-color: #6ba0ff44; }
+  .lifecycle-card .lc-strip span.rv { color: var(--warn); border-color: #ffb86b44; }
+  .lifecycle-card .lc-strip span.pb { color: var(--accent); border-color: #95e35d66; }
+  .lifecycle-card .lc-strip span.rd { color: var(--akhil); border-color: #ff8aa844; }
+  .lifecycle-card .lc-strip .arr { background: transparent; border: none; padding: 2px 2px; color: var(--border); }
+
+  /* "What's next" forward-looking strip — turns the demo into a pitch */
+  .next-strip {
+    margin: 28px 0 56px;
+    padding: 16px 20px;
+    background: linear-gradient(90deg, var(--panel) 0%, var(--panel-2) 100%);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--accent);
+    border-radius: var(--r);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-2);
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .next-strip .label {
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--accent);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .next-strip .body { flex: 1; min-width: 260px; }
+  .next-strip .body b { color: var(--text); font-weight: 500; }
+  .next-strip .ask {
+    font-family: var(--code);
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+  }
+  .next-strip .ask .who { color: var(--accent); }
+  .next-strip .ask a { color: inherit; }
+
+  /* Card framing badges — make multiplayer (07) visibly distinct from
+     the single-author slices (02–05). */
+  .scenario-card { position: relative; }
+  .scenario-card .frame-tag {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    font-family: var(--code);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid var(--border-soft);
+    color: var(--text-muted);
+    background: var(--panel-2);
+    white-space: nowrap;
+  }
+  .scenario-card .frame-tag.reader-art {
+    background: #ff8aa826;
+    border-color: #ff8aa866;
+    color: #ffb6cd;
+    font-size: 9.5px;
+  }
+  .scenario-card .frame-tag.two-up {
+    color: #0a1408;
+    background: var(--accent);
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  .scenario-card .frame-tag.series {
+    color: #0a1408;
+    background: var(--accent);
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  .scenario-card .frame-tag.loop {
+    background: #6ba0ff22;
+    border-color: #6ba0ff66;
+    color: #a3c4ff;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+<div class="index-wrap">
+  <div style="font-family: var(--code); font-size: 12px; color: var(--accent); letter-spacing: 0.1em; margin-bottom: 16px; text-transform: uppercase;">
+    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);margin-right:8px;vertical-align:middle;animation:pulse 2.4s ease-in-out infinite;"></span>doclayer / mocks
+  </div>
+  <h1>The doc that <span class="accent">becomes</span> the reader's harness.</h1>
+  <div style="font-family: var(--code); font-size: 12.5px; color: var(--text-muted); letter-spacing: 0.04em; margin: -4px 0 18px;"><span style="color:var(--text-2);">Two writers in their own lanes.</span> One series, many agents.</div>
+  <p class="lede">
+    A meta-harness for collaborative writing. The editor reshapes itself per phase, per author, and per task. When you publish, the article itself is a harness — adapting to each reader's prior knowledge.
+  </p>
+
+  <div class="vs-frame">
+    <div class="row"><span class="who">Notion</span><span>stores prose.</span></div>
+    <div class="row"><span class="who">Substack</span><span>publishes prose.</span></div>
+    <div class="row"><span class="who us">doclayer</span><span>ships the <em>grammar</em> the reader's browser binds against.</span></div>
+    <div class="row" style="margin-top: 2px; opacity: 0.7; font-size: 11.5px;"><span class="who" style="min-width: 92px; color: var(--border);">└─</span><span style="font-style: italic;">the harness arranges the work, then arranges the surface around it.</span></div>
+  </div>
+
+  <div class="hero-anim">
+    <div class="hero-pane p1">
+      <span class="hero-label">Plan</span>
+      <div class="hero-bar"><div class="fill"></div></div>
+      <div class="hero-bar short"><div class="fill"></div></div>
+      <div class="hero-bar tiny"><div class="fill"></div></div>
+    </div>
+    <div class="hero-pane p2">
+      <span class="hero-label">Draft</span>
+      <div class="hero-bar"><div class="fill"></div></div>
+      <div class="hero-bar"><div class="fill"></div></div>
+      <div class="hero-bar short"><div class="fill"></div></div>
+    </div>
+    <div class="hero-pane p3">
+      <span class="hero-label">Review</span>
+      <div class="hero-bar short"><div class="fill"></div></div>
+      <div class="hero-bar tiny"><div class="fill"></div></div>
+      <div class="hero-bar"><div class="fill"></div></div>
+    </div>
+    <div class="hero-pane p4">
+      <span class="hero-label" style="color: var(--vishal);">Reader</span>
+      <div class="hero-bar"><div class="fill"></div></div>
+      <div class="hero-bar"><div class="fill"></div></div>
+      <div class="hero-bar short"><div class="fill"></div></div>
+    </div>
+  </div>
+
+  <a class="lifecycle-card" href="00-flow.html">
+    <span class="lc-badge">START HERE</span>
+    <div class="lc-row">
+      <div class="lc-play">▶</div>
+      <div class="lc-text">
+        <div class="lc-num"><span class="pip"></span>FLOW · 85s playthrough · the doc born and shipped</div>
+        <h3>The whole lifecycle in one continuous reel.</h3>
+        <p>A series of 4 articles. Two writers in their own lanes. Agents orchestrating research, adversarial review, and visual grounding. Watch the trajectory roll out, then zoom into one article shipping end-to-end.</p>
+        <div class="lc-strip">
+          <span class="pl">PLAN</span><span class="arr">→</span>
+          <span class="dr">DRAFT</span><span class="arr">→</span>
+          <span class="rv">REVIEW</span><span class="arr">→</span>
+          <span class="pb">PUBLISH</span><span class="arr">→</span>
+          <span class="rd">READER</span>
+        </div>
+      </div>
+    </div>
+  </a>
+
+  <div class="next-strip">
+    <span class="label">what's next</span>
+    <div class="body">
+      Dogfooded build with <b>Akhil</b>, shipping the meta-harness article series as the launch artifact.
+      6-week v1: 2 authors, 1 doc, 5 phase manifests, 1 published reader-harness on <b>doclayer.live</b>.
+    </div>
+    <span class="ask">looking for: <span class="who">a frontier lab to embed with</span> · <a href="mailto:vishalt2000@gmail.com">vishalt2000@gmail.com</a></span>
+  </div>
+
+  <div style="margin: -28px 0 32px; font-family: var(--code); font-size: 12px; color: var(--text-muted); letter-spacing: 0.04em;">
+    new to the demo? read the <a href="guide.html" style="color: var(--accent);">walkthrough →</a>
+  </div>
+
+  <div class="scenario-grid">
+    <a class="scenario-card" href="01-bootstrap.html">
+      <div class="num">SCENARIO 01</div>
+      <h3>Bootstrap</h3>
+      <p>Empty workspace → grammar atoms snap into a layout. The harness composes itself.</p>
+    </a>
+    <a class="scenario-card" href="07-multiplayer.html">
+      <span class="frame-tag two-up">two-up · canonical</span>
+      <div class="num">SCENARIO 07</div>
+      <h3>Multiplayer, two harnesses</h3>
+      <p>Two people. Same doc. Two harnesses, authored from each author's prior. <b>This is the truth — 02–05 are slices of it.</b></p>
+    </a>
+    <a class="scenario-card" href="08-workstream.html">
+      <span class="frame-tag series">series · canonical</span>
+      <div class="num">SCENARIO 08</div>
+      <h3>Workstream across lanes</h3>
+      <p>Two writers in their own lanes. Agents in the middle, orchestrating: research, adversarial, visual. <b>The harness arranges the work, not just the chrome.</b></p>
+    </a>
+    <a class="scenario-card" href="09-review-loop.html">
+      <span class="frame-tag loop">loop · the protocol</span>
+      <div class="num">SCENARIO 09</div>
+      <h3>The review loop, end-to-end</h3>
+      <p>Type → LLM augments inline → notification → reviewer's harness reshapes → comments back → author iterates. <b>This is the actual loop the harness arranges.</b></p>
+    </a>
+    <a class="scenario-card" href="02-planning.html">
+      <span class="frame-tag">single-author view</span>
+      <div class="num">SCENARIO 02</div>
+      <h3>Planning, two cursors</h3>
+      <p>Outline tree, evidence panel scraped from shared links, tension tracker for open disagreements.</p>
+    </a>
+    <a class="scenario-card" href="03-drafting.html">
+      <span class="frame-tag">single-author view</span>
+      <div class="num">SCENARIO 03</div>
+      <h3>Drafting</h3>
+      <p>Voice sampler shows Akhil's denser style. Cursor stalls — three revision variants surface.</p>
+    </a>
+    <a class="scenario-card" href="04-review.html">
+      <span class="frame-tag">single-author view</span>
+      <div class="num">SCENARIO 04</div>
+      <h3>Review</h3>
+      <p>AI suggestion chips appear inside blocks. Dismissals feed back into the lesson memory.</p>
+    </a>
+    <a class="scenario-card" href="05-publish.html">
+      <span class="frame-tag">single-author view</span>
+      <div class="num">SCENARIO 05</div>
+      <h3>Publish</h3>
+      <p>Reader-harness preview with prior switcher. Deploy panel. One button: ship to <code>doclayer.live</code>.</p>
+    </a>
+    <a class="scenario-card" href="06-reader-harness.html">
+      <span class="frame-tag reader-art">published artifact</span>
+      <div class="num">SCENARIO 06</div>
+      <h3>Reader harness</h3>
+      <p>One article, three priors. Watch it re-render in place, then fan out to the money shot.</p>
+    </a>
+  </div>
+
+  <div class="footer">
+    <p>
+      Mocks are static HTML with CSS animations. They auto-play on load.<br>
+      The full design doc lives at <code>../DESIGN.md</code>. Open it for the architecture, reuse plan, and 6-week build sequence.
+    </p>
+    <p>
+      Reuses ~70% of <code>~/ProjectsDev/Relayer</code> (chain runtime, graph delta merge, WebSocket transport, FAISS memory, deploy pipeline) and <code>~/ProjectsDev/meta-ide</code> (Architect, Renderer, harness state machine, lesson memory, B-axis feedback).
+    </p>
+    <p>
+      Net-new: Yjs + ProseMirror CRDT layer, document grammar, reader-harness shell, article-flavored publish pipeline.
+    </p>
+  </div>
+</div>
+</body>
+</html>

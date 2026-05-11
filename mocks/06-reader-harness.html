@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>doclayer — Scenario 06: Reader-harness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* 26s loop: intro · engineer · PM · researcher · split + manifest · comments · loop. */
+  body { background: var(--bg); overflow: hidden; }
+
+  .reader-page {
+    height: 100vh;
+    display: grid;
+    grid-template-rows: var(--row-harness) 56px 56px 1fr;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ---------- Top URL bar ---------- */
+  .reader-top {
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    gap: 14px;
+    z-index: 4;
+  }
+  .reader-top .url {
+    font-family: var(--code);
+    font-size: 12px;
+    color: var(--text-2);
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    border-radius: 999px;
+  }
+  .reader-top .url .lock { color: var(--accent); margin-right: 8px; }
+  .reader-top .reload {
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 8px;
+  }
+  .reader-top .pitch {
+    margin-left: auto;
+    font-family: var(--code);
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .reader-top .pitch b { color: var(--accent); }
+
+  /* ---------- Reader-prior picker (atom) ---------- */
+  .prior-bar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--panel) 0%, #101013 100%);
+    z-index: 4;
+    position: relative;
+  }
+  .prior-bar .label {
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .prior-bar .label b { color: var(--accent); font-weight: 500; }
+  .prior-bar .pill-row {
+    display: flex;
+    gap: 8px;
+    position: relative;
+  }
+  .prior-pill-rd {
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    font-family: var(--code);
+    font-size: 11px;
+    color: var(--text-2);
+    letter-spacing: 0.02em;
+    transition: all 220ms ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .prior-pill-rd .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: all 220ms ease;
+  }
+  .prior-pill-rd[data-prior="engineer"] .dot.active-color { background: var(--accent); }
+  .prior-pill-rd[data-prior="pm"] .dot.active-color       { background: var(--vishal); }
+  .prior-pill-rd[data-prior="researcher"] .dot.active-color { background: var(--akhil); }
+
+  /* Active windows: engineer 2–6.5s, PM 6.5–11s, researcher 11–15s. */
+  .prior-pill-rd { animation: pillCycle 26s linear infinite; }
+  .prior-pill-rd[data-prior="engineer"]   { animation-name: pillEng; }
+  .prior-pill-rd[data-prior="pm"]         { animation-name: pillPm; }
+  .prior-pill-rd[data-prior="researcher"] { animation-name: pillRes; }
+
+  @keyframes pillEng {
+    0%, 7% { background: var(--panel-2); border-color: var(--border); color: var(--text-2); box-shadow: none; }
+    8%, 24% { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 14px #95e35d44; }
+    26%, 100% { background: var(--panel-2); border-color: var(--border-soft); color: var(--text-muted); box-shadow: none; }
+  }
+  @keyframes pillPm {
+    0%, 24% { background: var(--panel-2); border-color: var(--border); color: var(--text-2); box-shadow: none; }
+    26%, 41% { background: #1c2440; border-color: var(--vishal); color: var(--vishal); box-shadow: 0 0 0 1px var(--vishal), 0 0 14px #6ba0ff44; }
+    43%, 100% { background: var(--panel-2); border-color: var(--border-soft); color: var(--text-muted); box-shadow: none; }
+  }
+  @keyframes pillRes {
+    0%, 41% { background: var(--panel-2); border-color: var(--border); color: var(--text-2); box-shadow: none; }
+    43%, 88% { background: #2a1820; border-color: var(--akhil); color: var(--akhil); box-shadow: 0 0 0 1px var(--akhil), 0 0 14px #ff8aa844; }
+    90%, 100% { background: var(--panel-2); border-color: var(--border); color: var(--text-2); box-shadow: none; }
+  }
+
+  /* "binding…" inline pip per pill. Appears in the active window. */
+  .pill-pip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: 6px;
+    padding-left: 8px;
+    border-left: 1px solid currentColor;
+    font-size: 10px;
+    opacity: 0;
+    letter-spacing: 0.04em;
+  }
+  .pill-pip::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+    animation: bindDot 0.7s ease-in-out infinite;
+  }
+  .prior-pill-rd[data-prior="engineer"]   .pill-pip { animation: pipEng 26s linear infinite; }
+  .prior-pill-rd[data-prior="pm"]         .pill-pip { animation: pipPm 26s linear infinite; }
+  .prior-pill-rd[data-prior="researcher"] .pill-pip { animation: pipRes 26s linear infinite; }
+  @keyframes pipEng {
+    0%, 7% { opacity: 0; }
+    9%, 13% { opacity: 1; }
+    16%, 100% { opacity: 0; }
+  }
+  @keyframes pipPm {
+    0%, 24% { opacity: 0; }
+    26%, 30% { opacity: 1; }
+    33%, 100% { opacity: 0; }
+  }
+  @keyframes pipRes {
+    0%, 41% { opacity: 0; }
+    43%, 47% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+  @keyframes bindDot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  .prior-bar .grammar {
+    margin-left: auto;
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .prior-bar .grammar b { color: var(--text-2); font-weight: 500; }
+
+  /* ---------- Stage: holds the morphing column then splits ---------- */
+  .stage {
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+    padding: 18px 0 0;
+  }
+
+  /* 3-col grid throughout. Col 1 spans 1/4 during phases 1-3, contracts at the morph;
+     cols 2/3 fade in (opacity:0 -> 1) into the revealed space. */
+  .reader-stack {
+    height: 100%;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    padding: 0 16px 24px;
+    position: relative;
+    animation: stagePad 26s linear infinite;
+  }
+  @keyframes stagePad {
+    0%, 53% {
+      padding-left: max(16px, calc((100% - 800px) / 2));
+      padding-right: max(16px, calc((100% - 800px) / 2));
+      gap: 0;
+    }
+    60%, 100% {
+      padding-left: 16px;
+      padding-right: 16px;
+      gap: 12px;
+    }
+  }
+
+  .reader-col {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    position: relative;
+    transition: border-color 400ms ease;
+  }
+
+  /* Columns 2 and 3 only become visible once the stage splits. */
+  .reader-col[data-col="2"], .reader-col[data-col="3"] {
+    animation: colReveal 26s linear infinite;
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  @keyframes colReveal {
+    0%, 55% { opacity: 0; transform: scale(0.96) translateY(8px); }
+    62%, 92% { opacity: 1; transform: scale(1) translateY(0); }
+    96%, 100% { opacity: 0; transform: scale(0.96) translateY(8px); }
+  }
+
+  /* Hero column: spans 1/4 in phases 1-3, contracts at morph so cols 2/3 fill the rest. */
+  .reader-col[data-col="1"] {
+    animation: heroSettle 26s linear infinite, heroSpan 26s linear infinite;
+    grid-column: 1 / 4;
+  }
+  @keyframes heroSettle {
+    0%, 53% { box-shadow: 0 0 0 1px var(--border), 0 16px 40px #0008; border-color: var(--border); }
+    58%, 92% { box-shadow: 0 0 0 1px var(--border-soft), 0 8px 24px #0006; border-color: var(--border-soft); }
+    96%, 100% { box-shadow: 0 0 0 1px var(--border), 0 16px 40px #0008; border-color: var(--border); }
+  }
+  @keyframes heroSpan {
+    0%, 56%   { grid-column: 1 / 4; }
+    58%, 100% { grid-column: 1 / 2; }
+  }
+
+  .reader-col-head {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--panel-2);
+    font-family: var(--code);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .reader-col-head .who { color: var(--accent); }
+  .reader-col-head[data-prior="pm"] .who { color: var(--vishal); }
+  .reader-col-head[data-prior="researcher"] .who { color: var(--akhil); }
+  .reader-col-head .meta { color: var(--text-muted); font-size: 10px; }
+
+  /* Hero column header label morphs as the prior re-binds. */
+  .who-cycle { position: relative; display: inline-block; }
+  .who-cycle .who-layer { position: absolute; left: 0; top: 0; }
+  .who-cycle .who-layer:first-child { position: relative; }
+  .reader-col[data-col="1"] .who-cycle .who-layer { animation: whoLayer 26s linear infinite; }
+  .reader-col[data-col="1"] .who-cycle .who-layer[data-w="engineer"]   { animation-name: whoEng; }
+  .reader-col[data-col="1"] .who-cycle .who-layer[data-w="pm"]         { animation-name: whoPm; }
+  .reader-col[data-col="1"] .who-cycle .who-layer[data-w="researcher"] { animation-name: whoRes; }
+  @keyframes whoEng {
+    0%, 23% { opacity: 1; color: var(--accent); }
+    25%, 53% { opacity: 0; }
+    58%, 100% { opacity: 1; color: var(--accent); }
+  }
+  @keyframes whoPm {
+    0%, 23% { opacity: 0; }
+    26%, 40% { opacity: 1; color: var(--vishal); }
+    43%, 100% { opacity: 0; }
+  }
+  @keyframes whoRes {
+    0%, 40% { opacity: 0; }
+    43%, 53% { opacity: 1; color: var(--akhil); }
+    56%, 100% { opacity: 0; }
+  }
+
+  .article {
+    padding: 26px 32px 20px;
+    font-family: var(--serif);
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-2);
+    overflow-y: auto;
+    flex: 1;
+  }
+  .reader-col[data-col="2"] .article,
+  .reader-col[data-col="3"] .article {
+    padding: 18px 20px 14px;
+    font-size: 12.5px;
+    line-height: 1.6;
+  }
+  .article h1 {
+    font-family: var(--serif);
+    font-size: 26px;
+    margin: 0 0 4px;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+  .reader-col[data-col="2"] .article h1,
+  .reader-col[data-col="3"] .article h1 { font-size: 17px; }
+  .article .byline {
+    color: var(--text-muted);
+    font-family: var(--sans);
+    font-size: 11px;
+    margin-bottom: 18px;
+  }
+  .article h2 {
+    font-family: var(--sans);
+    font-size: 15px;
+    color: var(--text);
+    letter-spacing: -0.01em;
+    margin: 22px 0 8px;
+    font-weight: 600;
+  }
+  .reader-col[data-col="2"] .article h2,
+  .reader-col[data-col="3"] .article h2 { font-size: 12.5px; margin: 14px 0 6px; }
+  .article p { margin: 0 0 12px; }
+  .article em { color: var(--text); font-style: italic; }
+
+  .article .code {
+    font-family: var(--code);
+    font-size: 11px;
+    background: #0a1408;
+    border: 1px solid #95e35d33;
+    border-radius: var(--r);
+    padding: 10px 12px;
+    color: var(--accent);
+    margin: 8px 0 14px;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.55;
+  }
+  .reader-col[data-col="2"] .article .code,
+  .reader-col[data-col="3"] .article .code { font-size: 10px; padding: 8px 10px; }
+  .article .analogy {
+    font-family: var(--sans);
+    font-size: 13px;
+    background: var(--panel-2);
+    border-left: 2px solid var(--vishal);
+    padding: 10px 14px;
+    border-radius: 0 var(--r) var(--r) 0;
+    margin: 8px 0 14px;
+    color: var(--text-2);
+    line-height: 1.55;
+  }
+  .reader-col[data-col="2"] .article .analogy { font-size: 11.5px; }
+  .article .formal {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 13px;
+    background: var(--panel-2);
+    border-left: 2px solid var(--akhil);
+    padding: 10px 14px;
+    border-radius: 0 var(--r) var(--r) 0;
+    margin: 8px 0 14px;
+    color: var(--text-2);
+    line-height: 1.6;
+  }
+  .reader-col[data-col="3"] .article .formal { font-size: 11.5px; }
+
+  /* Hero column: stack three layers per swap zone, cross-fade by prior. */
+  .swap-zone { position: relative; }
+  .swap-zone > .layer {
+    transition: opacity 700ms cubic-bezier(.2,.8,.2,1),
+                transform 700ms cubic-bezier(.2,.8,.2,1);
+  }
+  /* Hero variant: stack three layers (eng/pm/res) in the same cell */
+  .reader-col[data-col="1"] .swap-zone {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .reader-col[data-col="1"] .swap-zone > .layer {
+    grid-column: 1;
+    grid-row: 1;
+    margin: 0 0 12px;
+  }
+  /* For non-paragraph block layers we want to keep their normal margin. */
+  .reader-col[data-col="1"] .swap-zone > .layer.block { margin: 8px 0 14px; }
+  .reader-col[data-col="1"] .swap-zone > .layer.head { margin: 22px 0 8px; }
+
+  /* Three layer animations, one per prior. */
+  .reader-col[data-col="1"] .swap-zone > .layer[data-prior="engineer"]   { animation: layerEng 26s linear infinite; }
+  .reader-col[data-col="1"] .swap-zone > .layer[data-prior="pm"]         { animation: layerPm 26s linear infinite; }
+  .reader-col[data-col="1"] .swap-zone > .layer[data-prior="researcher"] { animation: layerRes 26s linear infinite; }
+  @keyframes layerEng {
+    0%, 6% { opacity: 0; transform: translateY(6px); }
+    9%, 23% { opacity: 1; transform: translateY(0); }
+    25%, 56% { opacity: 0; transform: translateY(-6px); }
+    60%, 92% { opacity: 1; transform: translateY(0); }
+    96%, 100% { opacity: 0; transform: translateY(6px); }
+  }
+  @keyframes layerPm {
+    0%, 23% { opacity: 0; transform: translateY(6px); }
+    26%, 40% { opacity: 1; transform: translateY(0); }
+    43%, 100% { opacity: 0; transform: translateY(-6px); }
+  }
+  @keyframes layerRes {
+    0%, 40% { opacity: 0; transform: translateY(6px); }
+    43%, 56% { opacity: 1; transform: translateY(0); }
+    60%, 100% { opacity: 0; transform: translateY(-6px); }
+  }
+
+  /* Static cols 2 & 3 render only their single bound layer. */
+  .reader-col[data-col="2"] .swap-zone > .layer:not([data-prior="pm"]) { display: none; }
+  .reader-col[data-col="3"] .swap-zone > .layer:not([data-prior="researcher"]) { display: none; }
+  .reader-col[data-col="1"] .static-only { display: none; }
+
+  /* "binding…" pip near article edge — one element, keyframe-driven color/label. */
+  .hero-bind-pip {
+    position: absolute;
+    top: 14px;
+    right: 18px;
+    z-index: 3;
+    font-family: var(--code);
+    font-size: 10px;
+    background: #0a1408;
+    border: 1px solid #95e35d66;
+    padding: 4px 10px 4px 24px;
+    border-radius: 999px;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    opacity: 0;
+    pointer-events: none;
+    box-shadow: 0 0 14px #95e35d33;
+    animation: heroPipCycle 26s linear infinite;
+  }
+  .hero-bind-pip::before {
+    content: '';
+    position: absolute;
+    left: 9px; top: 50%;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    transform: translateY(-50%);
+    box-shadow: 0 0 8px currentColor;
+    animation: bindDot 0.7s ease-in-out infinite;
+  }
+  .hero-bind-pip .label-text { display: inline-block; }
+  .hero-bind-pip .label-text::before {
+    content: 'binding for ';
+    color: inherit;
+    opacity: 0.75;
+  }
+  .hero-bind-pip .label-text::after {
+    content: 'AI engineer prior…';
+    font-weight: 600;
+    animation: heroPipLabel 26s linear infinite;
+  }
+  @keyframes heroPipCycle {
+    0%, 6%   { opacity: 0; color: var(--accent); border-color: #95e35d66; background: #0a1408; box-shadow: 0 0 14px #95e35d33; }
+    9%, 22%  { opacity: 1; color: var(--accent); border-color: #95e35d66; background: #0a1408; box-shadow: 0 0 14px #95e35d33; }
+    24%, 25% { opacity: 0; color: var(--accent); border-color: #95e35d66; background: #0a1408; }
+    26%      { opacity: 0; color: var(--vishal); border-color: #6ba0ff66; background: #0a1024; box-shadow: 0 0 14px #6ba0ff33; }
+    28%, 39% { opacity: 1; color: var(--vishal); border-color: #6ba0ff66; background: #0a1024; box-shadow: 0 0 14px #6ba0ff33; }
+    41%, 42% { opacity: 0; color: var(--vishal); border-color: #6ba0ff66; background: #0a1024; }
+    43%      { opacity: 0; color: var(--akhil); border-color: #ff8aa866; background: #1a0a14; box-shadow: 0 0 14px #ff8aa833; }
+    45%, 53% { opacity: 1; color: var(--akhil); border-color: #ff8aa866; background: #1a0a14; box-shadow: 0 0 14px #ff8aa833; }
+    55%, 100%{ opacity: 0; color: var(--akhil); border-color: #ff8aa866; background: #1a0a14; }
+  }
+  @keyframes heroPipLabel {
+    0%, 25%   { content: 'AI engineer prior…'; }
+    26%, 42%  { content: 'PM prior…'; }
+    43%, 100% { content: 'researcher prior…'; }
+  }
+
+  /* Grammar-atom marker shown briefly during the active window. */
+  .grammar-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: 8px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-family: var(--code);
+    font-size: 9px;
+    background: var(--accent);
+    color: var(--bg);
+    letter-spacing: 0.02em;
+    vertical-align: middle;
+    opacity: 0.85;
+  }
+
+  /* ---------- Manifest callout (the climax) ---------- */
+  .manifest-banner {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    background: linear-gradient(180deg, #0e1f08 0%, #0a1408 100%);
+    border: 1px solid var(--accent);
+    border-radius: var(--r-lg);
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    font-family: var(--code);
+    color: var(--accent);
+    box-shadow: 0 0 0 1px #95e35d44, 0 18px 60px #95e35d22, 0 8px 32px #0009;
+    opacity: 0;
+    transform: translateY(28px);
+    z-index: 6;
+    animation: bannerInThenOut 26s linear infinite;
+  }
+  .manifest-banner .num {
+    font-size: 32px;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+    color: var(--accent);
+    text-shadow: 0 0 24px #95e35d66;
+    line-height: 1;
+  }
+  .manifest-banner .label {
+    font-size: 11px;
+    color: #95e35dcc;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+  .manifest-banner .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-right: 24px;
+    border-right: 1px solid #95e35d44;
+  }
+  .manifest-banner .stat:last-child { border-right: none; padding-right: 0; }
+  .manifest-banner .lede {
+    margin-left: auto;
+    font-family: var(--serif);
+    font-size: 14px;
+    font-style: italic;
+    color: var(--text);
+    max-width: 320px;
+    line-height: 1.45;
+    text-align: right;
+  }
+  .manifest-banner .lede em { color: var(--accent); font-style: italic; }
+
+  /* ---------- Comments thread (slides up under the columns at the climax) ---------- */
+  .comments-zone {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 12px 18px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 18px;
+    align-items: center;
+    z-index: 5;
+    opacity: 0;
+    transform: translateY(40px);
+    animation: commentsIn 26s linear infinite;
+  }
+  @keyframes commentsIn {
+    0%, 75% { opacity: 0; transform: translateY(40px); }
+    81%, 90% { opacity: 1; transform: translateY(0); }
+    94%, 100% { opacity: 0; transform: translateY(40px); }
+  }
+  /* Banner enters, holds, exits stage-bottom so comments-zone takes its slot. */
+  @keyframes bannerInThenOut {
+    0%, 55% { opacity: 0; transform: translateY(120%) scale(0.98); }
+    62%, 73% { opacity: 1; transform: translateY(0) scale(1); }
+    77% { opacity: 1; transform: translateY(0) scale(1); }
+    81%, 100% { opacity: 0; transform: translateY(120%) scale(0.96); }
+  }
+  .comments-label {
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+  .comments-label b { color: var(--accent); font-weight: 500; }
+  .comments-strip {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+  .comment-mini {
+    display: flex;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r);
+    font-size: 12px;
+    color: var(--text-2);
+    align-items: flex-start;
+  }
+  .comment-mini .av {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    font-family: var(--code);
+    font-size: 10px;
+    color: #0a0a0b;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    margin-top: 1px;
+  }
+  .comment-mini .av.eng { background: var(--accent); }
+  .comment-mini .av.pm  { background: var(--vishal); }
+  .comment-mini .av.res { background: var(--akhil); }
+  .comment-mini .body { line-height: 1.45; min-width: 0; }
+  .comment-mini .who {
+    font-family: var(--code);
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .comments-meta {
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+    text-align: right;
+    line-height: 1.45;
+  }
+  .comments-meta b { color: var(--accent); font-weight: 500; }
+
+  /* ---------- Intro overlay ---------- */
+  .intro-overlay {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(900px 500px at 50% 45%, #0e1f08 0%, var(--bg) 65%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    text-align: center;
+    pointer-events: none;
+    animation: introFade 26s linear infinite;
+  }
+  .intro-overlay .badge {
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    background: var(--accent-soft);
+    margin-bottom: 24px;
+  }
+  .intro-overlay h2 {
+    font-family: var(--serif);
+    font-size: 38px;
+    color: var(--text);
+    letter-spacing: -0.02em;
+    margin: 0 0 12px;
+    font-weight: 600;
+    max-width: 760px;
+    line-height: 1.2;
+  }
+  .intro-overlay h2 em {
+    color: var(--accent);
+    font-style: normal;
+  }
+  .intro-overlay .sub {
+    font-family: var(--code);
+    font-size: 12px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+  }
+  @keyframes introFade {
+    0% { opacity: 1; }
+    7% { opacity: 1; }
+    11% { opacity: 0; }
+    92% { opacity: 0; }
+    98%, 100% { opacity: 1; }
+  }
+
+  /* Narrow-viewport harness-strip compaction. */
+  @media (max-width: 1380px) {
+    .harness-strip .chain { font-size: 0; padding: 0; }
+    .harness-strip .chain b { font-size: 10.5px; }
+    .lifecycle-ribbon { margin-left: 10px; gap: 0; }
+    .lifecycle-ribbon .lcr-line { width: 10px; }
+    .lifecycle-ribbon .lcr-step { padding: 2px 7px; }
+  }
+  @media (max-width: 1180px) {
+    .harness-strip .chain { display: none; }
+    .lifecycle-ribbon .lcr-line { width: 8px; }
+    .lifecycle-ribbon .lcr-step { padding: 2px 6px; font-size: 9px; }
+  }
+
+  /* Narrow side-column bylines wrap cleanly. */
+  .reader-col[data-col="2"] .article .byline,
+  .reader-col[data-col="3"] .article .byline {
+    font-size: 10px;
+    line-height: 1.5;
+    margin-bottom: 14px;
+  }
+
+  /* Reduced-motion: lock to the three-column money shot. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001s !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001s !important;
+    }
+    .intro-overlay { display: none; }
+    .reader-stack {
+      grid-template-columns: 1fr 1fr 1fr !important;
+      padding: 0 16px 24px !important;
+      gap: 12px !important;
+    }
+    .reader-col { opacity: 1 !important; transform: none !important; }
+    .reader-col[data-col="1"] { grid-column: 1 / 2 !important; }
+    .reader-col[data-col="1"] .swap-zone > .layer:not([data-prior="engineer"]) { display: none; }
+    .reader-col[data-col="1"] .swap-zone > .layer[data-prior="engineer"] { opacity: 1; transform: none; }
+    .reader-col[data-col="1"] .who-cycle .who-layer:not([data-w="engineer"]) { display: none; }
+    .reader-col[data-col="1"] .who-cycle .who-layer[data-w="engineer"] { opacity: 1; }
+    .hero-bind-pip { display: none; }
+    .pill-pip { display: none; }
+    .prior-pill-rd[data-prior="engineer"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+    .prior-pill-rd[data-prior="pm"]       { background: #1c2440; border-color: var(--vishal); color: var(--vishal); }
+    .prior-pill-rd[data-prior="researcher"] { background: #2a1820; border-color: var(--akhil); color: var(--akhil); }
+    .manifest-banner { opacity: 1 !important; transform: none !important; }
+    .comments-zone { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Brief intro overlay (fades after ~2s) -->
+<div class="intro-overlay">
+  <div class="badge">scenario 06 · reader-harness</div>
+  <h2>watch one article <em>re-render</em> for three priors</h2>
+  <div class="sub">one manifest. three binding sets. zero server roundtrips.</div>
+</div>
+
+<div class="reader-page">
+
+  <!-- ROW 0: harness-strip spine -->
+  <div class="harness-strip">
+    <span class="phase reader">READER</span>
+    <span class="chain">chain · <b>DOC_READER/v1</b></span>
+    <ol class="lifecycle-ribbon" aria-label="document lifecycle">
+      <li class="lcr-step done"><span class="lcr-num">01</span>Bootstrap</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step done"><span class="lcr-num">02</span>Plan</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step done"><span class="lcr-num">03</span>Draft</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step done"><span class="lcr-num">04</span>Review</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step done"><span class="lcr-num">05</span>Publish</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step current"><span class="lcr-num">06</span>Reader</li>
+    </ol>
+    <span class="pip">static-bundle: <b style="color:var(--accent-2);font-weight:500;">live</b></span>
+  </div>
+
+  <!-- ROW 1: URL bar -->
+  <div class="reader-top">
+    <div class="url"><span class="lock">⬢</span>doclayer.live / posts / meta-harnesses-1-what-is-a-harness</div>
+    <div class="reload">↻ same DOM</div>
+    <div class="pitch">same article. same manifest. <b>three priors.</b> harness re-binds in the browser.</div>
+  </div>
+
+  <!-- ROW 2: reader-prior-picker (atom) -->
+  <div class="prior-bar">
+    <div class="label">atom · <b>reader-prior-picker</b></div>
+    <div class="pill-row">
+      <span class="prior-pill-rd" data-prior="engineer">
+        <span class="dot active-color"></span>AI engineer
+        <span class="pill-pip">binding…</span>
+      </span>
+      <span class="prior-pill-rd" data-prior="pm">
+        <span class="dot active-color"></span>PM
+        <span class="pill-pip">binding…</span>
+      </span>
+      <span class="prior-pill-rd" data-prior="researcher">
+        <span class="dot active-color"></span>researcher
+        <span class="pill-pip">binding…</span>
+      </span>
+    </div>
+    <div class="grammar">grammar · <b>evolving-explainer</b> · <b>revision-variant</b> · <b>comment-thread</b></div>
+  </div>
+
+  <!-- ROW 3: stage — single column → three-column money shot -->
+  <div class="stage">
+    <div class="reader-stack">
+
+      <!-- ============ HERO COLUMN — re-binds live ============ -->
+      <div class="reader-col" data-col="1">
+        <div class="reader-col-head">
+          <span>reader · <span class="who-cycle">
+            <span class="who-layer" data-w="engineer">AI engineer</span>
+            <span class="who-layer" data-w="pm">PM</span>
+            <span class="who-layer" data-w="researcher">researcher</span>
+          </span></span>
+          <span class="meta">manifest · frozen at publish · re-binds in browser</span>
+        </div>
+
+        <div class="hero-bind-pip">
+          <span class="label-text"></span>
+        </div>
+
+        <div class="article">
+          <h1>What is a harness?</h1>
+          <div class="byline">Akhil R &amp; Vishal Tandale · 2026 · part 1 of 4</div>
+
+          <!-- H2 swap-zone -->
+          <div class="swap-zone">
+            <h2 class="layer head" data-prior="engineer">The controller wrapping inference
+              <span class="grammar-mark">evolving-explainer</span>
+            </h2>
+            <h2 class="layer head" data-prior="pm">The shape of the AI product, not the model</h2>
+            <h2 class="layer head" data-prior="researcher">The decision process external to the policy</h2>
+          </div>
+
+          <!-- Intro paragraph swap-zone -->
+          <div class="swap-zone">
+            <p class="layer" data-prior="engineer">A harness is the controller wrapping the transformer at inference: the loop deciding which tokens to feed in, which tools to call, what to remember, and how to route the output back into state.</p>
+            <p class="layer" data-prior="pm">If the model is the engine, the harness is the chassis. Two products can use the exact same engine and feel completely different — what the customer touches is the chassis.</p>
+            <p class="layer" data-prior="researcher">The harness is the decision process that wraps a parameterized policy: it selects context, performs intermediate computation, and routes the policy's emissions back into state. The policy is one action among many.</p>
+          </div>
+
+          <!-- Body: code ↔ analogy ↔ formal sentence -->
+          <div class="swap-zone">
+            <div class="layer block" data-prior="engineer">
+              <div class="code">while (!done) {
+  ctx   = memory.recall(state)
+  out   = model.generate(ctx)
+  state = harness.step(out)
+}</div>
+            </div>
+            <div class="layer block" data-prior="pm">
+              <div class="analogy">
+                A sedan, a truck, and a sports car can run the same V8. The engine matters less than the form factor for what someone is buying. Same with AI products: same model, very different products.
+              </div>
+            </div>
+            <div class="layer block" data-prior="researcher">
+              <div class="formal">
+                Treat the harness as a sequential decision process whose action space includes the policy's own forward pass — every step it chooses between calling a tool, updating memory, or invoking the model again.
+              </div>
+            </div>
+          </div>
+
+          <p>The transformer is policy. The harness is everything else.</p>
+
+          <!-- Second h2 swap-zone -->
+          <div class="swap-zone">
+            <h2 class="layer head" data-prior="engineer">Why scaling LLMs doesn't solve it</h2>
+            <h2 class="layer head" data-prior="pm">Why scaling models doesn't dissolve startups</h2>
+            <h2 class="layer head" data-prior="researcher">Implications for self-improvement</h2>
+          </div>
+
+          <!-- Post-h2 paragraph swap-zone -->
+          <div class="swap-zone">
+            <p class="layer" data-prior="engineer">Bigger models give you better tokens per call, not a better loop. The decision of <em>when to call</em>, <em>what to feed</em>, and <em>what to do with the output</em> lives in code outside the weights.</p>
+            <p class="layer" data-prior="pm">You can't bigger-model your way to a better product. The engine generates tokens; the chassis decides which tokens are even worth generating, and what surface they reach the user through.</p>
+            <p class="layer" data-prior="researcher">Scaling the policy improves per-step behavior but does not constrain the harness's decision process. If the harness admits its own training signal, you can hill-climb the harness layer separately from the policy.</p>
+          </div>
+
+          <!-- Outro paragraph swap-zone -->
+          <div class="swap-zone">
+            <p class="layer" data-prior="engineer">Meta-harnesses author <em>Harness</em> values from a typed grammar — the way an Architect emits UI manifests in meta-ide.</p>
+            <p class="layer" data-prior="pm">Meta-harnesses are the next move: products that <em>shape themselves</em> per user, per task. The product layout itself adapts.</p>
+            <p class="layer" data-prior="researcher">The recursive case — meta-harnesses that author harnesses from a typed grammar — generalizes this to a search over harness families.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ COL 2 — PM (revealed at fan-out) ============ -->
+      <div class="reader-col" data-col="2">
+        <div class="reader-col-head" data-prior="pm">
+          <span class="who">reader · PM</span>
+          <span class="meta">analogy-bound</span>
+        </div>
+        <div class="article">
+          <h1>What is a harness?</h1>
+          <div class="byline">Akhil R &amp; Vishal Tandale · 2026 · part 1 of 4</div>
+
+          <div class="swap-zone">
+            <h2 class="layer head" data-prior="pm">The shape of the AI product, not the model</h2>
+          </div>
+
+          <div class="swap-zone">
+            <p class="layer" data-prior="pm">If the model is the engine, the harness is the chassis. Two products can use the exact same engine and feel completely different — what the customer touches is the chassis.</p>
+          </div>
+
+          <div class="swap-zone">
+            <div class="layer block" data-prior="pm">
+              <div class="analogy">
+                A sedan, a truck, and a sports car can run the same V8. The engine matters less than the form factor for what someone is buying.
+              </div>
+            </div>
+          </div>
+
+          <p>The transformer is policy. The harness is everything else.</p>
+
+          <div class="swap-zone">
+            <h2 class="layer head" data-prior="pm">Why scaling models doesn't dissolve startups</h2>
+          </div>
+
+          <div class="swap-zone">
+            <p class="layer" data-prior="pm">You can't bigger-model your way to a better product. The engine generates tokens; the chassis decides which tokens are worth generating, and what surface they reach the user through.</p>
+          </div>
+
+          <div class="swap-zone">
+            <p class="layer" data-prior="pm">Meta-harnesses are the next move: products that <em>shape themselves</em> per user, per task. The product layout itself adapts.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ COL 3 — Researcher (revealed at fan-out) ============ -->
+      <div class="reader-col" data-col="3">
+        <div class="reader-col-head" data-prior="researcher">
+          <span class="who">reader · researcher</span>
+          <span class="meta">formal-bound</span>
+        </div>
+        <div class="article">
+          <h1>What is a harness?</h1>
+          <div class="byline">Akhil R &amp; Vishal Tandale · 2026 · part 1 of 4</div>
+
+          <div class="swap-zone">
+            <h2 class="layer head" data-prior="researcher">The decision process external to the policy</h2>
+          </div>
+
+          <div class="swap-zone">
+            <p class="layer" data-prior="researcher">The harness is the decision process that wraps a parameterized policy: it selects context, performs intermediate computation, and routes the policy's emissions back into state.</p>
+          </div>
+
+          <div class="swap-zone">
+            <div class="layer block" data-prior="researcher">
+              <div class="formal">
+                Treat the harness as a sequential decision process whose action space includes the policy's own forward pass — every step it chooses between calling a tool, updating memory, or invoking the model again.
+              </div>
+            </div>
+          </div>
+
+          <p>The transformer is policy. The harness is everything else.</p>
+
+          <div class="swap-zone">
+            <h2 class="layer head" data-prior="researcher">Implications for self-improvement</h2>
+          </div>
+
+          <div class="swap-zone">
+            <p class="layer" data-prior="researcher">Scaling the policy improves per-step behavior but does not constrain the harness's decision process. If the harness admits its own training signal, you can hill-climb the harness layer separately from the policy.</p>
+          </div>
+
+          <div class="swap-zone">
+            <p class="layer" data-prior="researcher">The recursive case — meta-harnesses that author harnesses from a typed grammar — generalizes this to a search over harness families.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- THE MONEY SHOT: manifest callout slides in big across the bottom -->
+    <div class="manifest-banner">
+      <div class="stat">
+        <div class="num">18<span style="font-size:18px;">KB</span></div>
+        <div class="label">same manifest</div>
+      </div>
+      <div class="stat">
+        <div class="num">3</div>
+        <div class="label">binding sets</div>
+      </div>
+      <div class="stat">
+        <div class="num">0</div>
+        <div class="label">server roundtrips</div>
+      </div>
+      <div class="lede">
+        same DOM. same atoms. <em>the harness re-binds</em> per reader, in the browser.
+      </div>
+    </div>
+
+    <!-- Comments thread slides up at the climax -->
+    <div class="comments-zone">
+      <div class="comments-label">atom · <b>comment-thread</b><br>prior-bound replies</div>
+      <div class="comments-strip">
+        <div class="comment-mini">
+          <span class="av eng">E</span>
+          <div class="body">
+            <span class="who">jay · engineer</span>
+            where does <em>harness.step</em> live — host process or worker?
+          </div>
+        </div>
+        <div class="comment-mini">
+          <span class="av pm">P</span>
+          <div class="body">
+            <span class="who">mira · PM</span>
+            how does this affect distribution if the engine commoditizes?
+          </div>
+        </div>
+        <div class="comment-mini">
+          <span class="av res">R</span>
+          <div class="body">
+            <span class="who">k.ito · researcher</span>
+            do you have offline evals for the harness loss vs. a fixed-policy baseline?
+          </div>
+        </div>
+      </div>
+      <div class="comments-meta">
+        same atom<br><b>three prior-bound renders</b>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scenario-nav">
+  <a href="05-publish.html">← publish</a>
+  <a href="index.html">all scenarios</a>
+</div>
+
+<a class="advance-pill" href="index.html">all scenarios →</a>
+
+<button class="guide-btn" id="guideBtn">guide</button>
+<div class="scenario-guide-scrim" id="guideScrim"></div>
+<aside class="scenario-guide" id="guidePanel" aria-hidden="true">
+  <div class="sg-head">
+    <div class="sg-title">guide &middot; <b>scenario 06</b></div>
+    <button class="sg-close" id="guideClose" aria-label="close">&times;</button>
+  </div>
+  <div class="sg-body">
+    <p class="sg-tagline">The doc becomes the reader&rsquo;s harness. Same atoms; three different binds.</p>
+    <div class="sg-beat"><span class="sg-t">0&ndash;5s &middot; single hero column</span><p>A single hero column with a prior switcher above it: novice / practitioner / researcher. The article renders against the default prior first.</p></div>
+    <div class="sg-beat"><span class="sg-t">5&ndash;12s &middot; sequential bind</span><p>The reader changes prior. The article re-binds sequentially &mdash; paragraphs, citations, callouts re-render in place from the same atoms. Not a fade-swap; a live binding cycle.</p></div>
+    <div class="sg-beat"><span class="sg-t">12&ndash;18s &middot; money-shot three-column</span><p>The single column expands into three parallel reader views side-by-side. Same atoms; three structurally different renders. Different headings, different examples, different depth.</p></div>
+    <div class="sg-beat"><span class="sg-t">18&ndash;22s &middot; comments thread</span><p>Three readers, three priors, three differently-pitched questions about the same atom &mdash; proof the harness is per-reader, not per-page.</p></div>
+    <div class="sg-proof"><span class="lbl">what this proves</span>The article itself is a harness. The reader&rsquo;s browser binds against the grammar &mdash; ~18KB of shell, no server.</div>
+  </div>
+  <div class="sg-foot"><a href="guide.html">full walkthrough</a><span>06 / reader-harness</span></div>
+</aside>
+<script src="guide.js"></script>
+</body>
+</html>

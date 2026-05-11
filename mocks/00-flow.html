@@ -1,0 +1,2924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>doclayer — Lifecycle playthrough</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* Lifecycle playthrough — 15 stages over ~120s. body[data-stage] toggles state.
+     sP1/sP2/sP3 (series proposal + lanes + zoom) → sP4 (two-window parallel) →
+     sP5 (cross-collab moment) → sP6 (shrink akhil to rail) → s0..s12 (single-
+     article lifecycle WITH persistent akhil-rail). */
+
+  .app { grid-template-rows: var(--row-topbar) var(--row-harness) 36px 1fr var(--row-status); }
+
+  /* ---------- Lifecycle ribbon ---------- */
+  .ribbon {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 0 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border-soft);
+    height: 36px;
+    font-family: var(--code);
+    font-size: 10.5px;
+  }
+  .ribbon .step {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    transition: color 360ms ease, background 360ms ease;
+    position: relative;
+  }
+  .ribbon .step .mark {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    color: var(--text-muted);
+    background: var(--panel-2);
+    transition: all 360ms ease;
+  }
+  .ribbon .arr {
+    color: var(--border);
+    margin: 0 4px;
+    font-size: 10px;
+  }
+  @media (max-width: 1280px) {
+    .ribbon { padding: 0 12px; }
+    .ribbon .step { padding: 4px 7px; font-size: 10px; }
+    .ribbon .arr { margin: 0 2px; }
+    .ribbon .step .mark { width: 12px; height: 12px; }
+    .ribbon > span:last-child { display: none; }
+  }
+  .ribbon .step.done { color: var(--text-2); }
+  .ribbon .step.done .mark {
+    background: var(--accent-2);
+    border-color: var(--accent-2);
+    color: #0a0a0b;
+  }
+  .ribbon .step.done .mark::before { content: '✓'; }
+  .ribbon .step.active {
+    color: var(--text);
+    background: var(--accent-soft);
+  }
+  .ribbon .step.active .mark {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0a1408;
+    box-shadow: 0 0 0 3px var(--accent-soft);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  /* Ribbon mark color follows phase */
+  body.phase-draft .ribbon .step.active .mark { background: var(--vishal); border-color: var(--vishal); box-shadow: 0 0 0 3px #6ba0ff22; }
+  body.phase-review .ribbon .step.active .mark { background: var(--warn); border-color: var(--warn); box-shadow: 0 0 0 3px #ffb86b22; }
+  body.phase-reader .ribbon .step.active .mark { background: var(--akhil); border-color: var(--akhil); box-shadow: 0 0 0 3px #ff8aa822; }
+  body.phase-draft .ribbon .step.active { color: var(--vishal); background: #6ba0ff14; }
+  body.phase-review .ribbon .step.active { color: var(--warn); background: #ffb86b14; }
+  body.phase-reader .ribbon .step.active { color: var(--akhil); background: #ff8aa814; }
+
+  /* ---------- Phase chip morphing in harness-strip ---------- */
+  .harness-strip .phase {
+    transition: background 480ms ease, border-color 480ms ease, color 480ms ease;
+    min-width: 64px;
+    text-align: center;
+    justify-content: center;
+  }
+
+  /* ---------- Stage container ---------- */
+  .stage {
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+    transition: opacity 700ms ease;
+  }
+  body.wrap-fade .stage { opacity: 0; }
+  .stage-inner {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-columns: var(--leftCol, 0px) 1fr var(--rightCol, 0px);
+    transition: grid-template-columns 700ms cubic-bezier(.2,.8,.2,1);
+  }
+  body { --leftCol: 0px; --rightCol: 0px; }
+  body[data-stage="s2"], body[data-stage="s3"], body[data-stage="s4"] { --leftCol: 280px; --rightCol: 320px; }
+  body[data-stage="s5"], body[data-stage="s6"] { --leftCol: 200px; --rightCol: 240px; }
+  body[data-stage="s7"], body[data-stage="s8"] { --leftCol: 220px; --rightCol: 280px; }
+  body[data-stage="s9"] { --leftCol: 80px; --rightCol: 0px; }
+
+  .col {
+    overflow: hidden;
+    border-right: 1px solid var(--border);
+    background: var(--panel);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    transition: opacity 500ms ease, border-color 500ms ease;
+  }
+  .col.right { border-right: none; border-left: 1px solid var(--border); }
+  .col.center { background: var(--bg); border-right: none; }
+
+  /* ---------- Bootstrap form ---------- */
+  .bootstrap-stage-flow {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(1200px 600px at 50% 30%, #0f1810 0%, var(--bg) 60%);
+    transition: opacity 600ms ease;
+    z-index: 8;
+    pointer-events: none;
+  }
+  body:not([data-stage="s0"]):not([data-stage="s1"]) .bootstrap-stage-flow { opacity: 0; }
+
+  body[data-stage="s0"] .bootstrap-card,
+  body[data-stage="s1"] .bootstrap-card { transform: translateY(0); }
+
+  .bootstrap-card { width: 480px; transform: translateY(8px); transition: transform 500ms ease; }
+  .bootstrap-card .input { font-size: 13px; min-height: 18px; }
+
+  /* ---------- Atoms snap (s2) ---------- */
+  .atoms {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 6;
+    opacity: 0;
+    transition: opacity 400ms ease;
+  }
+  body[data-stage="s2"] .atoms { opacity: 1; }
+  .atom-r {
+    position: absolute;
+    border: 1.5px solid var(--accent);
+    background: var(--accent-soft);
+    border-radius: 8px;
+    box-shadow: 0 0 0 3px rgba(149,227,93,0.06);
+    opacity: 0;
+    transform: scale(0.94);
+    transition: opacity 380ms ease, transform 380ms cubic-bezier(.2,.8,.2,1);
+  }
+  .atom-r .cap {
+    position: absolute;
+    top: -16px; left: 4px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+  }
+  body[data-stage="s2"] .atom-r { opacity: 1; transform: scale(1); }
+  body[data-stage="s2"] .atom-r.a1 { transition-delay: 100ms; }
+  body[data-stage="s2"] .atom-r.a2 { transition-delay: 400ms; }
+  body[data-stage="s2"] .atom-r.a3 { transition-delay: 700ms; }
+  body[data-stage="s2"] .atom-r.a4 { transition-delay: 1000ms; }
+  body[data-stage="s2"] .atom-r.a5 { transition-delay: 1300ms; }
+
+  .atom-r.a1 { top: 16px; left: 16px; right: 16px; height: 32px; }
+  .atom-r.a2 { top: 64px; left: 16px; width: 264px; bottom: 16px; }
+  .atom-r.a3 { top: 64px; left: 296px; right: 336px; bottom: 16px; }
+  .atom-r.a4 { top: 64px; right: 16px; width: 304px; height: 50%; }
+  .atom-r.a5 { right: 16px; width: 304px; bottom: 16px; top: calc(64px + 50% + 8px); }
+
+  /* ---------- Outline (s3+) ---------- */
+  .panel-h {
+    padding: 10px 14px;
+    font-family: var(--code);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .panel-h .meta { margin-left: auto; font-size: 9.5px; color: var(--text-muted); }
+  .panel-b { padding: 12px; overflow: hidden; flex: 1; }
+
+  .outline-flow { list-style: none; padding: 0; margin: 0; font-size: 12px; }
+  .outline-flow li {
+    padding: 5px 8px;
+    border-radius: 5px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    color: var(--text-2);
+    opacity: 0;
+    transform: translateX(-8px);
+    transition: opacity 400ms ease, transform 400ms ease, color 400ms ease, background 400ms ease;
+  }
+  .outline-flow li.nested { padding-left: 24px; font-size: 11.5px; }
+  .outline-flow li .num {
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--text-muted);
+    min-width: 14px;
+  }
+  body.show-outline .outline-flow li { opacity: 1; transform: translateX(0); }
+  body[data-stage="s3"] .outline-flow li:nth-child(1) { transition-delay: 100ms; }
+  body[data-stage="s3"] .outline-flow li:nth-child(2) { transition-delay: 350ms; }
+  body[data-stage="s3"] .outline-flow li:nth-child(3) { transition-delay: 600ms; }
+  body[data-stage="s3"] .outline-flow li:nth-child(4) { transition-delay: 850ms; }
+  body[data-stage="s3"] .outline-flow li:nth-child(5) { transition-delay: 1100ms; }
+  body[data-stage="s3"] .outline-flow li:nth-child(6) { transition-delay: 1350ms; }
+  body[data-stage="s3"] .outline-flow li:nth-child(7) { transition-delay: 1600ms; }
+  body[data-stage="s3"] .outline-flow li:nth-child(8) { transition-delay: 1850ms; }
+
+  body[data-stage="s6"] .outline-flow li.active,
+  body[data-stage="s5"] .outline-flow li.active {
+    background: #6ba0ff14;
+    color: var(--vishal);
+  }
+
+  /* ---------- Evidence cards (s3+) ---------- */
+  .evidence-flow { display: flex; flex-direction: column; gap: 6px; }
+  .evidence-flow .card {
+    padding: 8px 10px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    font-size: 11.5px;
+    opacity: 0;
+    transform: translateX(8px);
+    transition: opacity 400ms ease, transform 400ms ease;
+  }
+  .evidence-flow .card .src {
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+  body.show-evidence .evidence-flow .card { opacity: 1; transform: translateX(0); }
+  body[data-stage="s3"] .evidence-flow .card:nth-child(1) { transition-delay: 600ms; }
+  body[data-stage="s3"] .evidence-flow .card:nth-child(2) { transition-delay: 1000ms; }
+  body[data-stage="s3"] .evidence-flow .card:nth-child(3) { transition-delay: 1400ms; }
+  body[data-stage="s3"] .evidence-flow .card:nth-child(4) { transition-delay: 1800ms; }
+
+  /* ---------- Tension tracker (atom: tension-tracker) ---------- */
+  .tension-flow {
+    margin-top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity 600ms ease;
+  }
+  body.show-evidence .tension-flow { opacity: 1; transition-delay: 1400ms; }
+  body[data-stage="s5"] .tension-flow,
+  body[data-stage="s6"] .tension-flow { opacity: 1; }
+  body[data-stage="s7"] .tension-flow,
+  body[data-stage="s8"] .tension-flow,
+  body[data-stage="s9"] .tension-flow,
+  body[data-stage="s10"] .tension-flow,
+  body[data-stage="s11"] .tension-flow,
+  body[data-stage="s12"] .tension-flow { opacity: 0; }
+  .tension-flow .th {
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+  }
+  .tension-flow .th .meta { margin-left: auto; color: var(--text-muted); }
+  .tension-flow .tn {
+    padding: 8px 10px;
+    border-radius: var(--r);
+    background: linear-gradient(180deg, #1c1614, var(--panel-2));
+    border: 1px solid #ffb86b33;
+    font-size: 11px;
+    color: var(--text-2);
+    line-height: 1.4;
+    transition: opacity 700ms ease, transform 700ms ease, border-color 700ms ease, background 700ms ease;
+  }
+  .tension-flow .tn .hd {
+    font-family: var(--code);
+    font-size: 9px;
+    color: var(--warn);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+  .tension-flow .tn .ax {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    font-family: var(--code);
+    letter-spacing: 0.04em;
+  }
+  /* At s5, tension t1 resolves: green border + struck-through body + "resolved" head */
+  body[data-stage="s5"] .tn.t1,
+  body[data-stage="s6"] .tn.t1 {
+    border-color: var(--accent-2);
+    background: linear-gradient(180deg, #0e1410, var(--panel-2));
+    opacity: 0.65;
+  }
+  body[data-stage="s5"] .tn.t1 .hd,
+  body[data-stage="s6"] .tn.t1 .hd { color: var(--accent-2); }
+  body[data-stage="s5"] .tn.t1 .hd::after,
+  body[data-stage="s6"] .tn.t1 .hd::after { content: ' · resolved'; color: var(--accent-2); }
+  body[data-stage="s5"] .tn.t1 .bd,
+  body[data-stage="s6"] .tn.t1 .bd { text-decoration: line-through; color: var(--text-muted); }
+  .tension-flow .tn .meta-tail {
+    margin-top: 6px;
+    font-size: 9px;
+    font-family: var(--code);
+    color: var(--accent-2);
+    letter-spacing: 0.06em;
+    opacity: 0;
+    transition: opacity 500ms ease;
+  }
+  body[data-stage="s5"] .tn.t1 .meta-tail,
+  body[data-stage="s6"] .tn.t1 .meta-tail { opacity: 1; }
+
+  /* ---------- Editor ---------- */
+  .editor-flow {
+    padding: 32px 56px 48px;
+    background: var(--bg);
+    font-family: var(--serif);
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--text);
+    overflow: hidden;
+    flex: 1;
+    position: relative;
+  }
+  body.phase-draft .editor-flow,
+  body.phase-review .editor-flow { padding: 28px 64px 36px; }
+  body.phase-publish .editor-flow,
+  body.phase-reader .editor-flow { padding: 32px 80px 48px; }
+
+  .editor-flow h1 {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+  }
+  .editor-flow .subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-bottom: 18px;
+  }
+  .editor-flow h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 22px 0 8px;
+    letter-spacing: -0.01em;
+  }
+  .editor-flow p {
+    margin: 0 0 12px;
+    color: var(--text-2);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: clip;
+    width: 0ch;
+    transition: width 1100ms steps(60, end);
+    position: relative;
+  }
+  /* Typing caret rides the right edge of the visible width during reveal */
+  .editor-flow p::after {
+    content: '';
+    position: absolute;
+    right: -1px;
+    top: 4%;
+    bottom: 4%;
+    width: 2px;
+    background: var(--vishal);
+    box-shadow: 0 0 6px var(--vishal);
+    opacity: 0;
+    animation: typingCaret 0.9s steps(1, end) infinite;
+  }
+  body.show-p1 .editor-flow p.p1::after,
+  body.show-p2 .editor-flow p.p2::after,
+  body.show-p3 .editor-flow p.p3::after { opacity: 1; }
+  /* Caret rests after review/publish/reader stages */
+  body[data-stage="s7"] .editor-flow p::after,
+  body[data-stage="s8"] .editor-flow p::after,
+  body[data-stage="s9"] .editor-flow p::after,
+  body[data-stage="s10"] .editor-flow p::after,
+  body[data-stage="s11"] .editor-flow p::after,
+  body[data-stage="s12"] .editor-flow p::after { opacity: 0 !important; }
+  @keyframes typingCaret {
+    0%, 55% { opacity: 1; }
+    55.01%, 100% { opacity: 0.25; }
+  }
+  .editor-flow p.wrap {
+    white-space: normal;
+    width: auto;
+  }
+  /* Reveal paragraphs as typewriter via width transitions */
+  body.show-p1 .editor-flow p.p1 { white-space: normal; width: auto; }
+  body.show-p2 .editor-flow p.p2 { white-space: normal; width: auto; transition-delay: 1500ms; }
+  body.show-p3 .editor-flow p.p3 { white-space: normal; width: auto; }
+  body[data-stage="s3"] .editor-flow p,
+  body[data-stage="s4"] .editor-flow p,
+  body[data-stage="s5"] .editor-flow p { opacity: 0.3; }
+  .editor-flow { opacity: 0; transition: opacity 600ms ease; }
+  body.show-editor .editor-flow { opacity: 1; }
+
+  /* ---------- Cursors ---------- */
+  .flow-cursor {
+    position: absolute;
+    width: 2px;
+    height: 18px;
+    border-radius: 1px;
+    pointer-events: none;
+    z-index: 12;
+    opacity: 0;
+    transition: opacity 400ms ease, top 600ms ease, left 600ms ease;
+  }
+  .flow-cursor::after {
+    content: attr(data-name);
+    position: absolute;
+    top: -16px;
+    left: -2px;
+    background: inherit;
+    color: #fff;
+    font-family: var(--sans);
+    font-size: 8.5px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .flow-cursor.vishal { background: var(--vishal); }
+  .flow-cursor.akhil { background: var(--akhil); }
+  body.show-cursors .flow-cursor { opacity: 1; animation: blink 1s steps(1) infinite; }
+  body[data-stage="s4"] .flow-cursor.vishal { top: 80px; left: 200px; }
+  body[data-stage="s4"] .flow-cursor.akhil { top: 140px; left: 320px; }
+  body[data-stage="s5"] .flow-cursor.vishal { top: 100px; left: 240px; }
+  body[data-stage="s5"] .flow-cursor.akhil { top: 180px; left: 280px; }
+  body[data-stage="s6"] .flow-cursor.vishal { top: 200px; left: 360px; }
+  body[data-stage="s6"] .flow-cursor.akhil { top: 280px; left: 280px; }
+
+  /* ---------- Persistent document title (DOC IS THE SAME) ---------- */
+  .doc-header { gap: 10px; }
+  .doc-pin {
+    font-family: var(--code);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    color: var(--text-muted);
+    transition: color 480ms ease, border-color 480ms ease, background 480ms ease;
+  }
+  .doc-title {
+    font-family: var(--serif);
+    font-size: 13px;
+    font-style: italic;
+    color: var(--text-2);
+    letter-spacing: 0;
+    text-transform: none;
+    transition: color 480ms ease, opacity 360ms ease;
+  }
+  /* Brief opacity dip when the title swaps "series" → "article 2" at s0 entry */
+  body[data-stage="s0"] .doc-title { animation: titleSwap 900ms ease-out 1; }
+  @keyframes titleSwap {
+    0%   { opacity: 0.2; }
+    100% { opacity: 1; }
+  }
+  body.phase-draft .doc-pin { color: var(--vishal); border-color: #6ba0ff44; background: #6ba0ff14; }
+  body.phase-review .doc-pin { color: var(--warn); border-color: #ffb86b44; background: #ffb86b14; }
+  body.phase-publish .doc-pin { color: var(--accent); border-color: #95e35d66; background: var(--accent-soft); }
+  body.phase-reader .doc-pin { color: var(--akhil); border-color: #ff8aa844; background: #ff8aa814; }
+
+  /* ---------- Word counter ---------- */
+  .wc {
+    font-family: var(--code);
+    font-size: 10.5px;
+    color: var(--text-muted);
+    transition: color 360ms ease;
+  }
+  .wc b { color: var(--text-2); font-weight: 500; transition: color 360ms ease; }
+  body[data-stage="s6"] .wc b,
+  body[data-stage="s7"] .wc b,
+  body[data-stage="s8"] .wc b { color: var(--vishal); }
+
+  /* ---------- Suggestion chips (s7) ---------- */
+  .chip-row {
+    position: absolute;
+    top: 60px;
+    right: 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 11;
+    opacity: 0;
+    transition: opacity 500ms ease;
+  }
+  body.phase-review .chip-row { opacity: 1; }
+  .flow-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: #ffb86b18;
+    border: 1px solid #ffb86b44;
+    border-radius: 999px;
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--warn);
+    letter-spacing: 0.02em;
+    transform: translateX(12px);
+    opacity: 0;
+    transition: opacity 380ms ease, transform 380ms ease, background 380ms ease, border-color 380ms ease;
+  }
+  body[data-stage="s7"] .flow-chip { opacity: 1; transform: translateX(0); }
+  body[data-stage="s7"] .flow-chip.c1 { transition-delay: 100ms; }
+  body[data-stage="s7"] .flow-chip.c2 { transition-delay: 600ms; }
+  body[data-stage="s7"] .flow-chip.c3 { transition-delay: 1100ms; }
+  body[data-stage="s7"] .flow-chip.c4 { transition-delay: 1600ms; }
+  /* Two suggestions accept (turn green) at end of s7, two dismiss in s8 */
+  body[data-stage="s7"] .flow-chip.accept-1,
+  body[data-stage="s7"] .flow-chip.accept-2,
+  body[data-stage="s8"] .flow-chip.accept-1,
+  body[data-stage="s8"] .flow-chip.accept-2 {
+    background: var(--accent-soft);
+    border-color: #95e35d44;
+    color: var(--accent);
+    transition-delay: 4500ms;
+  }
+  body[data-stage="s8"] .flow-chip.dismiss-1,
+  body[data-stage="s8"] .flow-chip.dismiss-2 {
+    opacity: 0;
+    transform: translateX(20px);
+    transition-delay: 0ms;
+  }
+
+  /* ---------- Approval ribbon (s8) ---------- */
+  .approval-ribbon {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    background: linear-gradient(180deg, #1a2811 0%, #0f1d08 100%);
+    border-bottom: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--code);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 8px 16px;
+    text-align: center;
+    transform: translateY(-100%);
+    transition: transform 700ms cubic-bezier(.2,.8,.2,1);
+    z-index: 14;
+  }
+  .approval-ribbon::before {
+    content: '✓ ';
+    margin-right: 6px;
+  }
+  body[data-stage="s8"] .approval-ribbon { transform: translateY(0); }
+
+  /* ---------- Build sequence (s9) ---------- */
+  .build-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(10,10,11,0.86);
+    backdrop-filter: blur(8px);
+    z-index: 16;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 500ms ease;
+    pointer-events: none;
+  }
+  body[data-stage="s9"] .build-overlay { opacity: 1; }
+  .build-card {
+    width: 420px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 20px 24px;
+    font-family: var(--code);
+    font-size: 12px;
+  }
+  .build-card .head {
+    color: var(--accent);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .build-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    color: var(--text-muted);
+    transition: color 400ms ease;
+  }
+  .build-step .icon {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    transition: all 400ms ease;
+  }
+  body[data-stage="s9"] .build-step.b1 { color: var(--text-2); transition-delay: 200ms; }
+  body[data-stage="s9"] .build-step.b1 .icon { background: var(--accent); border-color: var(--accent); color: #0a1408; transition-delay: 200ms; }
+  body[data-stage="s9"] .build-step.b1 .icon::before { content: '✓'; }
+  body[data-stage="s9"] .build-step.b2 { color: var(--text-2); transition-delay: 1500ms; }
+  body[data-stage="s9"] .build-step.b2 .icon { background: var(--accent); border-color: var(--accent); color: #0a1408; transition-delay: 1500ms; }
+  body[data-stage="s9"] .build-step.b2 .icon::before { content: '✓'; }
+  body[data-stage="s9"] .build-step.b3 { color: var(--text-2); transition-delay: 3000ms; }
+  body[data-stage="s9"] .build-step.b3 .icon { background: var(--accent); border-color: var(--accent); color: #0a1408; transition-delay: 3000ms; }
+  body[data-stage="s9"] .build-step.b3 .icon::before { content: '✓'; }
+  body[data-stage="s9"] .build-step.b4 { color: var(--accent); transition-delay: 4500ms; }
+  body[data-stage="s9"] .build-step.b4 .icon { background: var(--accent); border-color: var(--accent); color: #0a1408; transition-delay: 4500ms; }
+  body[data-stage="s9"] .build-step.b4 .icon::before { content: '✓'; }
+
+  /* ---------- Live border (s10+) ---------- */
+  .live-border {
+    position: absolute;
+    inset: 12px;
+    border: 1.5px solid transparent;
+    border-radius: var(--r-lg);
+    pointer-events: none;
+    z-index: 5;
+    transition: border-color 700ms ease, box-shadow 700ms ease;
+  }
+  body.live .live-border {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(149,227,93,0.06), inset 0 0 60px rgba(149,227,93,0.04);
+  }
+  body.reader-mode .live-border {
+    border-color: var(--akhil);
+    box-shadow: 0 0 0 4px rgba(255,138,168,0.06), inset 0 0 60px rgba(255,138,168,0.04);
+  }
+
+  /* ---------- Reader prior picker (s10+) ---------- */
+  .prior-bar {
+    position: absolute;
+    top: 24px; left: 50%;
+    transform: translate(-50%, -16px);
+    display: flex;
+    gap: 8px;
+    z-index: 13;
+    opacity: 0;
+    transition: opacity 500ms ease, transform 500ms ease;
+  }
+  body.live .prior-bar { opacity: 1; transform: translate(-50%, 0); }
+  .prior-pill-flow {
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    font-family: var(--code);
+    font-size: 10.5px;
+    color: var(--text-2);
+    letter-spacing: 0.02em;
+    transition: all 400ms ease;
+  }
+  body[data-stage="s11"] .prior-pill-flow.engineer,
+  body[data-stage="s12"] .prior-pill-flow.researcher {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* ---------- Reader content (cross-fades) ---------- */
+  .reader-variant {
+    opacity: 0;
+    transition: opacity 600ms ease;
+    position: absolute;
+    inset: 0;
+    padding: 64px 80px 32px;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .reader-variant h1 {
+    font-family: var(--serif);
+    font-size: 26px;
+    font-weight: 600;
+    margin: 0 0 6px;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+  .reader-variant p {
+    font-family: var(--serif);
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--text-2);
+    margin: 0 0 12px;
+  }
+  .reader-variant .code-snip {
+    font-family: var(--code);
+    font-size: 11px;
+    background: #0a1408;
+    border: 1px solid #95e35d33;
+    border-radius: var(--r);
+    padding: 10px 12px;
+    color: var(--accent);
+    margin: 8px 0 12px;
+  }
+  .reader-variant .analogy {
+    font-family: var(--sans);
+    font-size: 12px;
+    background: var(--panel-2);
+    border-left: 2px solid var(--vishal);
+    padding: 8px 12px;
+    border-radius: 0 var(--r) var(--r) 0;
+    margin: 8px 0 12px;
+    color: var(--text-2);
+  }
+  body[data-stage="s11"] .reader-variant.engineer { opacity: 1; }
+  body[data-stage="s12"] .reader-variant.researcher { opacity: 1; }
+
+  /* Fade out the draft editor when entering reader stages so the reader-variants take over cleanly */
+  body[data-stage="s11"] .editor-flow,
+  body[data-stage="s12"] .editor-flow { opacity: 0; }
+
+  /* ---------- Manifest callout (s12) ---------- */
+  .manifest-callout {
+    position: absolute;
+    bottom: 40px; left: 50%;
+    transform: translate(-50%, 12px) scale(0.96);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 22px;
+    background: linear-gradient(180deg, var(--panel) 0%, #0f1d08 100%);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    font-family: var(--code);
+    font-size: 11px;
+    color: var(--text-2);
+    letter-spacing: 0.04em;
+    z-index: 14;
+    opacity: 0;
+    box-shadow: 0 0 0 4px rgba(149,227,93,0.06), 0 8px 32px rgba(0,0,0,0.4);
+    transition: opacity 700ms ease, transform 700ms cubic-bezier(.2,.8,.2,1);
+  }
+  body[data-stage="s12"] .manifest-callout { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  .manifest-callout .sep { color: var(--border); }
+  .manifest-callout b { color: var(--accent); font-weight: 600; }
+  .manifest-callout .lead {
+    font-family: var(--sans);
+    font-size: 9.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    padding-right: 8px;
+    border-right: 1px solid var(--border);
+    margin-right: 2px;
+  }
+
+  /* ---------- Statusbar elapsed timer ---------- */
+  .elapsed b { color: var(--text-2); font-weight: 500; }
+  .stage-label b { color: var(--accent); font-weight: 500; }
+
+  /* ---------- Footer skip-to-scenario links ---------- */
+  .scenario-skip {
+    position: fixed;
+    bottom: 12px;
+    right: 16px;
+    display: flex;
+    gap: 6px;
+    z-index: 100;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 6px;
+    opacity: 0.85;
+    transition: opacity 400ms ease, transform 400ms ease;
+  }
+  .scenario-skip:hover { opacity: 1; }
+  /* Slide skip-nav out of the way during the s12 manifest reveal */
+  body[data-stage="s12"] .scenario-skip { opacity: 0.35; transform: translateY(4px); }
+  body[data-stage="s12"] .scenario-skip:hover { opacity: 1; transform: translateY(0); }
+  .scenario-skip a {
+    padding: 4px 10px;
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+    border-radius: 999px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .scenario-skip a:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .scenario-skip .div { color: var(--border); padding: 4px 0; }
+
+  /* ============ Pre-stages: series proposal + task lanes (sP1–sP3) ============ */
+  body[data-stage^="sP"] .bootstrap-stage-flow { opacity: 0; }
+  .trajectory-layer {
+    position: absolute; inset: 0; z-index: 9; opacity: 0; pointer-events: none;
+    transition: opacity 500ms ease;
+    background: var(--bg) radial-gradient(1200px 600px at 50% 30%, #0f1810 0%, var(--bg) 60%);
+  }
+  body[data-stage^="sP"] .trajectory-layer { opacity: 1; }
+
+  .series-proposal {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 540px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 18px 22px 20px;
+    transition: transform 700ms cubic-bezier(.2,.8,.2,1), top 700ms cubic-bezier(.2,.8,.2,1), width 700ms cubic-bezier(.2,.8,.2,1), padding 600ms ease;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.4);
+  }
+  .series-proposal .sp-head {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--code); font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 14px;
+  }
+  .series-proposal .sp-head .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 6px var(--accent);
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  .series-proposal .sp-head .meta { margin-left: auto; color: var(--text-muted); letter-spacing: 0.04em; }
+  .series-proposal .sp-cards { display: flex; flex-direction: column; gap: 7px; }
+  .sp-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r);
+    font-family: var(--serif); font-size: 13px;
+    color: var(--text-2);
+    opacity: 0; transform: translateY(4px);
+    transition: opacity 380ms ease, transform 380ms ease, border-color 400ms ease, background 400ms ease, padding 500ms ease, font-size 500ms ease;
+  }
+  .sp-card .num {
+    font-family: var(--code); font-size: 9.5px; color: var(--text-muted);
+    letter-spacing: 0.08em; flex-shrink: 0; min-width: 56px;
+    transition: min-width 500ms ease;
+  }
+  .sp-card .title {
+    flex: 1; overflow: hidden; white-space: nowrap; text-overflow: clip;
+    width: 0ch; transition: width 600ms steps(40, end);
+  }
+  .sp-card .tag {
+    font-family: var(--code); font-size: 9px;
+    letter-spacing: 0.06em; color: var(--text-muted);
+    padding: 2px 7px; border-radius: 999px;
+    border: 1px solid var(--border-soft); background: var(--panel);
+    flex-shrink: 0; opacity: 0;
+    transition: opacity 400ms ease;
+  }
+  body[data-stage="sP1"] .sp-card.c1 { opacity: 1; transform: translateY(0); transition-delay: 100ms; }
+  body[data-stage="sP1"] .sp-card.c2 { opacity: 1; transform: translateY(0); transition-delay: 700ms; }
+  body[data-stage="sP1"] .sp-card.c3 { opacity: 1; transform: translateY(0); transition-delay: 1300ms; }
+  body[data-stage="sP1"] .sp-card.c4 { opacity: 1; transform: translateY(0); transition-delay: 1900ms; }
+  body[data-stage="sP1"] .sp-card .title,
+  body[data-stage="sP2"] .sp-card .title,
+  body[data-stage="sP3"] .sp-card .title { width: auto; }
+  body[data-stage="sP1"] .sp-card .tag { opacity: 1; transition-delay: 1200ms; }
+  body[data-stage="sP2"] .sp-card,
+  body[data-stage="sP3"] .sp-card { opacity: 1; transform: translateY(0); }
+  body[data-stage="sP3"] .sp-card.c2 {
+    border-color: var(--accent); background: var(--accent-soft);
+  }
+
+  .sp-approve {
+    margin-top: 14px;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent); color: var(--accent);
+    font-family: var(--code); font-size: 10px; letter-spacing: 0.04em;
+    opacity: 0; transition: opacity 500ms ease;
+  }
+  .sp-approve::before { content: '✓'; margin-right: 2px; }
+  body[data-stage="sP1"] .sp-approve { opacity: 1; transition-delay: 2500ms; }
+  body[data-stage="sP2"] .sp-approve,
+  body[data-stage="sP3"] .sp-approve { opacity: 0; }
+
+  .sp-caption {
+    position: absolute; bottom: 28px; left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--code); font-size: 10.5px;
+    color: var(--text-muted); letter-spacing: 0.04em;
+    text-align: center; white-space: nowrap;
+    opacity: 0; transition: opacity 500ms ease;
+  }
+  .sp-caption b { color: var(--text-2); font-weight: 500; }
+  body[data-stage="sP1"] .sp-caption.cap-sp1 { opacity: 1; transition-delay: 800ms; }
+  body[data-stage="sP2"] .sp-caption.cap-sp2 { opacity: 1; transition-delay: 600ms; }
+
+  /* sP2/sP3: collapse proposal into a horizontal spine at the top */
+  body[data-stage="sP2"] .series-proposal,
+  body[data-stage="sP3"] .series-proposal {
+    top: 56px;
+    transform: translate(-50%, 0) scale(0.92);
+    width: 720px;
+    padding: 8px 14px;
+  }
+  body[data-stage="sP2"] .series-proposal .sp-head,
+  body[data-stage="sP3"] .series-proposal .sp-head { margin-bottom: 6px; font-size: 9px; }
+  body[data-stage="sP2"] .series-proposal .sp-cards,
+  body[data-stage="sP3"] .series-proposal .sp-cards { flex-direction: row; gap: 6px; }
+  body[data-stage="sP2"] .sp-card,
+  body[data-stage="sP3"] .sp-card { padding: 5px 8px; font-size: 11px; flex: 1; min-width: 0; }
+  body[data-stage="sP2"] .sp-card .num,
+  body[data-stage="sP3"] .sp-card .num { min-width: 0; }
+  body[data-stage="sP2"] .sp-card .title,
+  body[data-stage="sP3"] .sp-card .title { font-size: 11px; }
+  body[data-stage="sP2"] .sp-card .tag,
+  body[data-stage="sP3"] .sp-card .tag { display: none; }
+
+  /* Lanes — two rails for Akhil + Vishal */
+  .lanes {
+    position: absolute; left: 32px; right: 32px; top: 150px; bottom: 60px;
+    display: flex; flex-direction: column; gap: 14px;
+    opacity: 0; transition: opacity 600ms ease;
+  }
+  body[data-stage="sP2"] .lanes { opacity: 1; transition-delay: 200ms; }
+  body[data-stage="sP3"] .lanes { opacity: 0.25; }
+
+  .lane { flex: 1; display: flex; align-items: stretch; gap: 10px; min-height: 0; }
+  .lane .lane-label {
+    width: 110px; flex-shrink: 0;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 0 12px;
+    font-family: var(--code); font-size: 10.5px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    border-right: 1px solid var(--border-soft);
+  }
+  .lane .lane-label b {
+    font-weight: 600; color: var(--text);
+    text-transform: none; font-family: var(--serif);
+    font-size: 13px; font-style: italic;
+    letter-spacing: 0; margin-bottom: 2px;
+  }
+  .lane.akhil .lane-label { color: var(--akhil); }
+  .lane.vishal .lane-label { color: var(--vishal); }
+  .lane .lane-label .role { color: var(--text-muted); font-size: 9px; }
+
+  .lane .lane-cards { flex: 1; display: flex; align-items: center; gap: 8px; overflow: hidden; }
+  .task-card {
+    flex: 1; min-width: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 8px 10px;
+    font-family: var(--sans); font-size: 11px;
+    color: var(--text-2); line-height: 1.4;
+    opacity: 0; transform: translateX(-12px);
+    transition: opacity 400ms ease, transform 400ms ease, border-color 400ms ease, background 400ms ease;
+  }
+  .task-card .tc-h {
+    font-family: var(--code); font-size: 9px;
+    color: var(--text-muted); letter-spacing: 0.06em;
+    margin-bottom: 3px;
+  }
+  .lane.akhil .task-card { border-left: 2px solid var(--akhil); }
+  .lane.vishal .task-card { border-left: 2px solid var(--vishal); }
+  .lane.akhil .task-card .tc-h { color: var(--akhil); }
+  .lane.vishal .task-card .tc-h { color: var(--vishal); }
+  body[data-stage="sP2"] .task-card.t1 { opacity: 1; transform: translateX(0); transition-delay: 400ms; }
+  body[data-stage="sP2"] .task-card.t2 { opacity: 1; transform: translateX(0); transition-delay: 700ms; }
+  body[data-stage="sP2"] .task-card.t3 { opacity: 1; transform: translateX(0); transition-delay: 1000ms; }
+  body[data-stage="sP2"] .task-card.t4 { opacity: 1; transform: translateX(0); transition-delay: 1300ms; }
+  body[data-stage="sP3"] .task-card { opacity: 1; transform: translateX(0); }
+  body[data-stage="sP3"] .task-card.zoom {
+    border-color: var(--accent); background: var(--accent-soft); opacity: 1;
+  }
+
+  /* ===== 08-workstream lane grammar: status pills + source attribution ===== */
+  .task-card .tc-top {
+    display: flex; align-items: flex-start; gap: 6px; margin-bottom: 3px;
+  }
+  .task-card .tc-top .tc-h { margin-bottom: 0; flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task-card .pill {
+    flex-shrink: 0;
+    font-family: var(--code); font-size: 8.5px;
+    padding: 1px 6px; border-radius: 999px;
+    border: 1px solid var(--border-soft);
+    letter-spacing: 0.06em; text-transform: lowercase;
+    color: var(--text-muted); background: var(--panel-2);
+    white-space: nowrap;
+  }
+  .task-card .pill.in-progress  { background: var(--accent-soft); border-color: #95e35d66; color: var(--accent); }
+  .task-card .pill.in-progress::before {
+    content: ''; display: inline-block;
+    width: 4px; height: 4px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 5px var(--accent);
+    margin-right: 3px; vertical-align: middle;
+  }
+  .task-card .pill.queued        { color: var(--text-muted); }
+  .task-card .pill.awaiting-ai   { background: #d1eb6a1a; border-color: #d1eb6a55; color: #c0e060; }
+  .task-card .pill.awaiting-review { background: #6ba0ff1a; border-color: #6ba0ff55; color: var(--vishal); }
+  .task-card .tc-src {
+    font-family: var(--code); font-size: 8.5px;
+    color: var(--text-muted); letter-spacing: 0.02em;
+    margin-top: 4px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .task-card .tc-src.from-agent  { color: var(--accent); }
+  .task-card .tc-src.from-akhil  { color: var(--akhil); }
+  .task-card .tc-src.from-vishal { color: var(--vishal); }
+
+  /* Ghosted agent column (right edge, sP2/sP3) — R / A / V pips */
+  .agent-rail-ghost {
+    position: absolute; right: 32px; top: 150px; bottom: 60px;
+    width: 84px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 14px;
+    opacity: 0;
+    border-left: 1px dashed var(--border-soft);
+    padding-left: 10px;
+    transition: opacity 600ms ease;
+    pointer-events: none;
+    z-index: 9;
+  }
+  body[data-stage="sP2"] .agent-rail-ghost { opacity: 0.6; transition-delay: 600ms; }
+  body[data-stage="sP3"] .agent-rail-ghost { opacity: 0.35; }
+  .agent-rail-ghost .arg-head {
+    font-family: var(--code); font-size: 8px;
+    color: var(--text-muted); letter-spacing: 0.1em;
+    text-transform: uppercase; text-align: center; line-height: 1.3;
+    margin-bottom: 4px;
+  }
+  .agent-rail-ghost .arg-pip {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 3px;
+  }
+  .agent-rail-ghost .arg-ico {
+    width: 24px; height: 24px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: var(--code); font-size: 11px; font-weight: 700;
+  }
+  .agent-rail-ghost .arg-pip.research .arg-ico    { background: var(--accent); color: #0a1408; }
+  .agent-rail-ghost .arg-pip.adversarial .arg-ico { background: var(--warn); color: #1a1410; }
+  .agent-rail-ghost .arg-pip.visual .arg-ico      { background: var(--vishal); color: #0d1218; }
+  .agent-rail-ghost .arg-lbl {
+    font-family: var(--code); font-size: 8px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .agent-rail-ghost .arg-pip.research .arg-lbl    { color: var(--accent); }
+  .agent-rail-ghost .arg-pip.adversarial .arg-lbl { color: var(--warn); }
+  .agent-rail-ghost .arg-pip.visual .arg-lbl      { color: var(--vishal); }
+
+  /* Shrink lanes right edge to make room for ghost column in sP2/sP3 */
+  body[data-stage="sP2"] .lanes,
+  body[data-stage="sP3"] .lanes { right: 132px; }
+
+  /* Counter strip — mirrors 08's thesis-anchor, shown during sP3 */
+  .flow-counter {
+    position: absolute;
+    left: 32px;
+    right: 32px;
+    bottom: 36px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 14px;
+    background: linear-gradient(90deg, var(--panel) 0%, #0e1410 50%, var(--panel) 100%);
+    border-top: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border);
+    border-radius: var(--r);
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-2);
+    letter-spacing: 0.04em;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 700ms ease, transform 700ms cubic-bezier(.2,.8,.2,1);
+    z-index: 10;
+    pointer-events: none;
+  }
+  body[data-stage="sP3"] .flow-counter { opacity: 1; transform: translateY(0); }
+  .flow-counter .fc-label {
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 9px;
+    margin-right: 4px;
+  }
+  .flow-counter .fc-stat { display: inline-flex; align-items: baseline; gap: 4px; }
+  .flow-counter .fc-stat b {
+    color: var(--text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    font-size: 11.5px;
+  }
+  .flow-counter .fc-key { color: var(--text-muted); font-size: 9px; }
+  .flow-counter .fc-sep { color: var(--border); }
+  .flow-counter .fc-vs {
+    margin-left: auto;
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 9.5px;
+  }
+  .flow-counter .fc-vs-b {
+    color: var(--text-2);
+    font-style: normal;
+    font-variant-numeric: tabular-nums;
+    text-decoration: line-through;
+    text-decoration-color: var(--text-muted);
+  }
+
+  .ribbon .step[data-step="series"] .mark { background: var(--panel-2); }
+
+  /* Series reader caption (s12) — references the trajectory */
+  .series-reader-cap {
+    position: absolute; bottom: 96px; left: 50%;
+    transform: translate(-50%, 4px);
+    font-family: var(--code); font-size: 10.5px;
+    color: var(--text-muted); letter-spacing: 0.04em;
+    opacity: 0; z-index: 13; white-space: nowrap;
+    transition: opacity 600ms ease, transform 600ms ease;
+  }
+  .series-reader-cap b { color: var(--accent); font-weight: 500; }
+  body[data-stage="s12"] .series-reader-cap { opacity: 1; transform: translate(-50%, 0); transition-delay: 1200ms; }
+
+  /* ============ Two-window collaboration (sP4 / sP5) ============
+     A two-up viewport that overlays the stage during the parallel-work arc.
+     Same pattern as 07-multiplayer.html: Vishal-shell | sync-gutter | Akhil-shell. */
+  .twoup-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 11;
+    opacity: 0;
+    pointer-events: none;
+    background: var(--bg);
+    display: grid;
+    grid-template-columns: 1fr 92px 1fr;
+    gap: 0;
+    padding: 12px;
+    transition: opacity 600ms ease;
+  }
+  body[data-stage="sP4"] .twoup-layer,
+  body[data-stage="sP5"] .twoup-layer,
+  body[data-stage="sP6"] .twoup-layer { opacity: 1; }
+  /* sP6 collapses Akhil's shell down to a thin rail before unmounting */
+  body[data-stage="sP6"] .twoup-layer {
+    grid-template-columns: 1fr 0px 92px;
+    transition: grid-template-columns 800ms cubic-bezier(.2,.8,.2,1), opacity 700ms ease 700ms;
+    opacity: 1;
+  }
+  body[data-stage="sP6"] .twoup-layer .twoup-gutter { opacity: 0; transition: opacity 500ms ease; }
+  /* During sP6 the layer fades out at the tail so s0 lands clean — but the
+     persistent akhil-rail (separate element) is already mounted underneath. */
+  body[data-stage="sP6"] .twoup-shell.akhil { opacity: 0; transition: opacity 600ms ease 1100ms; }
+
+  .twoup-shell {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    position: relative;
+  }
+  .twoup-shell.vishal { box-shadow: inset 0 0 0 1px #6ba0ff14; }
+  .twoup-shell.akhil  { box-shadow: inset 0 0 0 1px #ff8aa814; }
+
+  .twoup-strip {
+    padding: 6px 10px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--border-soft);
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+    background: linear-gradient(180deg, #0e1218 0%, var(--panel) 100%);
+    flex-shrink: 0;
+  }
+  .twoup-shell.akhil .twoup-strip { background: linear-gradient(180deg, #181014 0%, var(--panel) 100%); }
+  .twoup-strip .who {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 2px 8px; border-radius: 999px;
+    font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .twoup-shell.vishal .twoup-strip .who { background: #6ba0ff18; border: 1px solid #6ba0ff44; color: var(--vishal); }
+  .twoup-shell.akhil  .twoup-strip .who { background: #ff8aa818; border: 1px solid #ff8aa844; color: var(--akhil); }
+  .twoup-strip .prior-tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 1px 7px; border-radius: 999px;
+    font-size: 9px; letter-spacing: 0.04em;
+    border: 1px solid var(--border-soft);
+    background: var(--panel-2);
+  }
+  .twoup-strip .prior-tag::before {
+    content: ''; width: 4px; height: 4px; border-radius: 50%;
+    background: currentColor; box-shadow: 0 0 5px currentColor;
+  }
+  .twoup-shell.vishal .twoup-strip .prior-tag { color: var(--vishal); background: #6ba0ff10; border-color: #6ba0ff33; }
+  .twoup-shell.akhil  .twoup-strip .prior-tag { color: var(--akhil); background: #ff8aa810; border-color: #ff8aa833; }
+  .twoup-strip .ts-meta { margin-left: auto; font-size: 9px; }
+
+  .twoup-task {
+    padding: 6px 10px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--border-soft);
+    font-family: var(--sans);
+    font-size: 11px;
+    color: var(--text-2);
+    background: var(--panel-2);
+    flex-shrink: 0;
+    transition: background 600ms ease, border-color 600ms ease;
+  }
+  .twoup-task .tt-id {
+    font-family: var(--code); font-size: 9px;
+    color: var(--text-muted); letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .twoup-shell.vishal .twoup-task .tt-id { color: var(--vishal); }
+  .twoup-shell.akhil  .twoup-task .tt-id { color: var(--akhil); }
+  .twoup-task .tt-body { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .twoup-task .tt-pill {
+    font-family: var(--code); font-size: 8.5px;
+    padding: 1px 7px; border-radius: 999px;
+    border: 1px solid var(--border-soft);
+    color: var(--text-muted); background: var(--panel);
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+    transition: all 500ms ease;
+  }
+  .twoup-task .tt-pill.in-progress { color: var(--accent); border-color: #95e35d55; background: var(--accent-soft); }
+  .twoup-task .tt-pill.blocked     { color: var(--warn);   border-color: #ffb86b55; background: #ffb86b10; }
+  /* sP5: Vishal's task transitions from blocked→in-progress when research arrives.
+     We swap the label via CSS: hide the original text, render "in-progress" via ::after. */
+  body[data-stage="sP5"] .twoup-shell.vishal .twoup-task .tt-pill.blocked,
+  body[data-stage="sP6"] .twoup-shell.vishal .twoup-task .tt-pill.blocked {
+    color: var(--accent); border-color: #95e35d55; background: var(--accent-soft);
+    font-size: 0; /* hide original "blocked · awaiting research" text */
+    transition: color 500ms ease, background 500ms ease, border-color 500ms ease;
+  }
+  body[data-stage="sP5"] .twoup-shell.vishal .twoup-task .tt-pill.blocked::before,
+  body[data-stage="sP6"] .twoup-shell.vishal .twoup-task .tt-pill.blocked::before {
+    content: '● in-progress';
+    font-size: 8.5px;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+  }
+
+  .twoup-body {
+    flex: 1; min-height: 0; overflow: hidden;
+    padding: 16px 18px;
+    background: var(--bg);
+    font-family: var(--serif); font-size: 12.5px; line-height: 1.55;
+    color: var(--text-2);
+    position: relative;
+  }
+  .twoup-body h3 {
+    font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
+    margin: 0 0 6px; color: var(--text);
+  }
+  .twoup-body .sec {
+    font-family: var(--code); font-size: 9.5px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 8px;
+  }
+  .twoup-shell.vishal .twoup-body .sec { color: var(--vishal); }
+  .twoup-shell.akhil  .twoup-body .sec { color: var(--akhil); }
+
+  /* Vishal-side: typewriter paragraph */
+  .twoup-body .vp {
+    overflow: hidden;
+    color: var(--text-2);
+    position: relative;
+    margin: 0 0 10px;
+  }
+  .twoup-body .vp::after {
+    content: '|';
+    color: var(--vishal);
+    margin-left: 2px;
+    animation: blink 1s steps(1) infinite;
+  }
+  body[data-stage="sP4"] .twoup-body .vp,
+  body[data-stage="sP5"] .twoup-body .vp,
+  body[data-stage="sP6"] .twoup-body .vp { white-space: normal; }
+  /* Phantom dim line that pops in during sP5: the citation context delivered from Akhil */
+  .twoup-body .ctx-card {
+    margin-top: 14px;
+    padding: 8px 10px;
+    background: linear-gradient(180deg, #0e1410 0%, var(--panel-2) 100%);
+    border: 1px solid #95e35d44;
+    border-left: 2px solid var(--accent);
+    border-radius: var(--r);
+    font-family: var(--sans); font-size: 11px; color: var(--text-2);
+    opacity: 0; transform: translateY(6px) scale(0.96);
+    transition: opacity 600ms ease, transform 600ms cubic-bezier(.2,.8,.2,1);
+  }
+  .twoup-body .ctx-card {
+    /* Akhil-side: review-comment card (was citation card). Re-color to akhil pink. */
+    border: 1px solid #ff8aa844;
+    border-left: 2px solid var(--akhil);
+  }
+  .twoup-body .ctx-card .h {
+    font-family: var(--code); font-size: 9px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--akhil); margin-bottom: 5px;
+  }
+  .twoup-body .ctx-card .cmt {
+    font-family: var(--sans); font-size: 10.5px;
+    color: var(--text-2); line-height: 1.45;
+    padding: 2px 0; border-bottom: 1px dashed #ff8aa822;
+  }
+  .twoup-body .ctx-card .cmt:last-child { border-bottom: 0; }
+  .twoup-body .ctx-card .cmt b { color: var(--akhil); font-weight: 600; }
+  .twoup-body .ctx-card .cite {
+    font-family: var(--code); font-size: 9.5px;
+    color: var(--text-muted); margin-top: 4px;
+  }
+  /* Blinking typing-cursor in both editors — both authors are actively writing */
+  .twoup-body .type-caret {
+    display: inline-block; width: 2px; height: 1em;
+    background: var(--text); vertical-align: -2px; margin-left: 1px;
+    animation: caretBlink 1.0s steps(2, end) infinite;
+  }
+  .twoup-shell.akhil .twoup-body .type-caret { background: var(--akhil); }
+  .twoup-shell.vishal .twoup-body .type-caret { background: var(--vishal); }
+  @keyframes caretBlink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+  /* sP5 — small agent-research particle delivers refs to Vishal in parallel with akhil's human review.
+     Smaller than the human handoff so the hierarchy is: humans review (big), agents research (small). */
+  body[data-stage="sP5"] .twoup-ev.agent-r {
+    opacity: 0;
+    animation: tu_agent_r 3.6s ease-in-out 1;
+    animation-delay: 2.4s;
+    animation-fill-mode: both;
+    font-size: 9.5px;
+    padding: 3px 8px;
+    border: 1px solid #95e35d55;
+    background: #0d1408;
+    color: var(--accent);
+    z-index: 6;
+  }
+  @keyframes tu_agent_r {
+    0%        { opacity: 0; transform: translate(0%, 80%) scale(0.7); }
+    20%       { opacity: 0.9; transform: translate(-60%, 80%) scale(0.95); }
+    55%       { opacity: 0.9; transform: translate(-180%, 80%) scale(0.95); }
+    85%, 100% { opacity: 0; transform: translate(-280%, 80%) scale(0.8); }
+  }
+  body[data-stage="sP5"] .twoup-shell.vishal .ctx-card,
+  body[data-stage="sP6"] .twoup-shell.vishal .ctx-card { opacity: 1; transform: translateY(0) scale(1); transition-delay: 1200ms; }
+
+  /* Akhil-side: citation list, pin-ticks */
+  .twoup-body .cite-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 7px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r);
+    background: var(--panel-2);
+    margin-bottom: 5px;
+    font-family: var(--code); font-size: 10px;
+    color: var(--text-2);
+    opacity: 0; transform: translateX(-6px);
+    transition: opacity 400ms ease, transform 400ms ease, border-color 400ms ease;
+  }
+  .twoup-body .cite-row .src { color: var(--text-muted); font-size: 9px; flex-shrink: 0; min-width: 72px; }
+  .twoup-body .cite-row .tt  { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .twoup-body .cite-row .pin {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--panel); border: 1px solid var(--border);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 7px; color: var(--text-muted);
+    flex-shrink: 0;
+    transition: all 400ms ease;
+  }
+  body[data-stage="sP4"] .twoup-shell.akhil .cite-row,
+  body[data-stage="sP5"] .twoup-shell.akhil .cite-row,
+  body[data-stage="sP6"] .twoup-shell.akhil .cite-row { opacity: 1; transform: translateX(0); }
+  body[data-stage="sP4"] .twoup-shell.akhil .cite-row.r1 { transition-delay: 200ms; }
+  body[data-stage="sP4"] .twoup-shell.akhil .cite-row.r2 { transition-delay: 700ms; }
+  body[data-stage="sP4"] .twoup-shell.akhil .cite-row.r3 { transition-delay: 1400ms; }
+  body[data-stage="sP4"] .twoup-shell.akhil .cite-row.r4 { transition-delay: 2200ms; }
+  body[data-stage="sP4"] .twoup-shell.akhil .cite-row.pinned .pin,
+  body[data-stage="sP5"] .twoup-shell.akhil .cite-row.pinned .pin,
+  body[data-stage="sP6"] .twoup-shell.akhil .cite-row.pinned .pin {
+    background: var(--akhil); border-color: var(--akhil);
+    color: #1a0d12; box-shadow: 0 0 6px #ff8aa888;
+  }
+  body[data-stage="sP4"] .twoup-shell.akhil .cite-row.pinned .pin::before,
+  body[data-stage="sP5"] .twoup-shell.akhil .cite-row.pinned .pin::before,
+  body[data-stage="sP6"] .twoup-shell.akhil .cite-row.pinned .pin::before { content: '✓'; }
+
+  /* Sync gutter (sP4/sP5) */
+  .twoup-gutter {
+    position: relative;
+    background: linear-gradient(180deg, #0d0e10 0%, #08080a 50%, #0d0e10 100%);
+    border-left: 1px solid var(--border-soft);
+    border-right: 1px solid var(--border-soft);
+    border-radius: 8px;
+  }
+  .twoup-gutter::before {
+    content: '';
+    position: absolute;
+    left: 50%; top: 12px; bottom: 12px;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, #95e35d22 30%, #95e35d22 70%, transparent);
+  }
+  .twoup-gutter .gl {
+    position: absolute;
+    top: 12px; left: 50%; transform: translateX(-50%);
+    font-family: var(--code); font-size: 8.5px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-muted);
+    background: var(--bg);
+    padding: 2px 7px; border-radius: 999px;
+    border: 1px solid var(--border-soft);
+    white-space: nowrap;
+  }
+  .twoup-gutter .gf {
+    position: absolute;
+    bottom: 12px; left: 50%; transform: translateX(-50%);
+    font-family: var(--code); font-size: 8.5px;
+    letter-spacing: 0.06em;
+    color: var(--accent-2);
+    background: var(--bg);
+    padding: 2px 7px; border-radius: 999px;
+    border: 1px solid #95e35d33;
+    white-space: nowrap;
+  }
+  .twoup-gutter .gf::before {
+    content: '';
+    display: inline-block;
+    width: 4px; height: 4px; border-radius: 50%;
+    background: var(--accent-2); box-shadow: 0 0 5px var(--accent-2);
+    margin-right: 4px; vertical-align: middle;
+  }
+  /* Event particles in the gutter */
+  .twoup-ev {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    font-family: var(--code); font-size: 9px;
+    padding: 3px 8px; border-radius: 999px;
+    background: var(--panel); border: 1px solid var(--border);
+    color: var(--text-2);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 4;
+  }
+  .twoup-ev.v { border-color: #6ba0ff66; color: var(--vishal); background: #6ba0ff10; }
+  .twoup-ev.a { border-color: #ff8aa866; color: var(--akhil); background: #ff8aa810; }
+  .twoup-ev.g { border-color: #95e35d66; color: var(--accent); background: #95e35d10; }
+  /* sP4 event loop: V→A typed, A→V pin, V→A yjs (8s window) */
+  body[data-stage="sP4"] .twoup-ev.v1 { animation: tu_v1 6s ease-in-out infinite; }
+  body[data-stage="sP4"] .twoup-ev.a1 { animation: tu_a1 6s ease-in-out infinite; animation-delay: 1.2s; }
+  body[data-stage="sP4"] .twoup-ev.v2 { animation: tu_v2 6s ease-in-out infinite; animation-delay: 2.5s; }
+  body[data-stage="sP4"] .twoup-ev.a2 { animation: tu_a2 6s ease-in-out infinite; animation-delay: 3.8s; }
+  @keyframes tu_v1 {
+    0%, 5%   { opacity: 0; transform: translate(-260%, -55%) scale(0.7); }
+    18%      { opacity: 1; transform: translate(-100%, -55%) scale(1); }
+    50%      { opacity: 1; transform: translate(100%, -55%) scale(1); }
+    66%, 100%{ opacity: 0; transform: translate(260%, -55%) scale(0.7); }
+  }
+  @keyframes tu_a1 {
+    0%, 5%   { opacity: 0; transform: translate(260%, -25%) scale(0.7); }
+    18%      { opacity: 1; transform: translate(100%, -25%) scale(1); }
+    50%      { opacity: 1; transform: translate(-100%, -25%) scale(1); }
+    66%, 100%{ opacity: 0; transform: translate(-260%, -25%) scale(0.7); }
+  }
+  @keyframes tu_v2 {
+    0%, 5%   { opacity: 0; transform: translate(-260%, 5%) scale(0.7); }
+    18%      { opacity: 0.8; transform: translate(-100%, 5%) scale(1); }
+    50%      { opacity: 0.8; transform: translate(100%, 5%) scale(1); }
+    66%, 100%{ opacity: 0; transform: translate(260%, 5%) scale(0.7); }
+  }
+  @keyframes tu_a2 {
+    0%, 5%   { opacity: 0; transform: translate(260%, 40%) scale(0.7); }
+    18%      { opacity: 1; transform: translate(100%, 40%) scale(1); }
+    50%      { opacity: 1; transform: translate(-100%, 40%) scale(1); }
+    66%, 100%{ opacity: 0; transform: translate(-260%, 40%) scale(0.7); }
+  }
+  /* sP4 — bidirectional protocol: mid-stage, Vishal asks Akhil for help.
+     This earns the akhil→vishal delivery in sP5. */
+  body[data-stage="sP4"] .twoup-ev.handoff-v2a {
+    opacity: 0;
+    animation: tu_handoff_v2a 4.0s ease-in-out 1;
+    animation-delay: 4.0s;
+    animation-fill-mode: both;
+    font-size: 10.5px;
+    padding: 5px 12px;
+    border: 1.5px solid var(--vishal);
+    background: linear-gradient(90deg, #0a0f18 0%, #0c1422 100%);
+    color: var(--vishal);
+    box-shadow: 0 0 0 1px #6ba0ff33, 0 0 16px #6ba0ff55;
+    z-index: 8;
+  }
+  @keyframes tu_handoff_v2a {
+    0%        { opacity: 0; transform: translate(-260%, -50%) scale(0.7); }
+    18%       { opacity: 1; transform: translate(-180%, -50%) scale(1); }
+    32%       { opacity: 1; transform: translate(0%, -50%) scale(1.05); box-shadow: 0 0 0 2px #6ba0ff55, 0 0 24px #6ba0ffaa; }
+    50%       { opacity: 1; transform: translate(120%, -50%) scale(1); }
+    72%       { opacity: 1; transform: translate(220%, -50%) scale(0.92); }
+    100%      { opacity: 0; transform: translate(260%, -50%) scale(0.7); }
+  }
+  /* When the v→a particle lands, Akhil's task pill briefly halos to ack the request */
+  body[data-stage="sP4"] .twoup-shell.akhil .tt-pill {
+    animation: ackHalo 600ms ease-out 1;
+    animation-delay: 6.4s;
+  }
+  @keyframes ackHalo {
+    0%   { box-shadow: 0 0 0 0 #ff8aa800; }
+    40%  { box-shadow: 0 0 0 4px #ff8aa844, 0 0 12px #ff8aa866; transform: scale(1.04); }
+    100% { box-shadow: 0 0 0 0 #ff8aa800; transform: scale(1); }
+  }
+
+  /* sP5 — pill consequence flash: when the akhil→vishal handoff lands at ~1s into sP5,
+     vishal's pill pulses to make the consequence land as loudly as the cause. */
+  body[data-stage="sP5"] #vishal-pill {
+    animation: pillConsequence 900ms cubic-bezier(.2,.8,.2,1) 1;
+    animation-delay: 1.0s;
+    animation-fill-mode: both;
+  }
+  @keyframes pillConsequence {
+    0%   { box-shadow: 0 0 0 0 #95e35d00; transform: scale(1); }
+    35%  { box-shadow: 0 0 0 6px #95e35d44, 0 0 20px #95e35d88; transform: scale(1.12); }
+    60%  { box-shadow: 0 0 0 3px #95e35d22, 0 0 14px #95e35d55; transform: scale(1.06); }
+    100% { box-shadow: 0 0 0 0 #95e35d00; transform: scale(1); }
+  }
+
+  /* sP5 — THE cross-collab moment: a single, large, glowing particle flies
+     from Akhil's column through the gutter into Vishal's column. */
+  body[data-stage="sP5"] .twoup-ev.handoff {
+    opacity: 0;
+    animation: tu_handoff 4.5s ease-in-out 1;
+    animation-delay: 0.3s;
+    animation-fill-mode: both;
+    font-size: 10.5px;
+    padding: 5px 12px;
+    border: 1.5px solid var(--accent);
+    background: linear-gradient(90deg, #0d1408 0%, #182610 100%);
+    color: var(--accent);
+    box-shadow: 0 0 0 1px #95e35d33, 0 0 18px #95e35d66;
+    z-index: 8;
+  }
+  @keyframes tu_handoff {
+    0%        { opacity: 0; transform: translate(260%, -50%) scale(0.7); }
+    18%       { opacity: 1; transform: translate(180%, -50%) scale(1); }
+    32%       { opacity: 1; transform: translate(0%, -50%) scale(1.06); box-shadow: 0 0 0 2px #95e35d55, 0 0 28px #95e35dbb; }
+    52%       { opacity: 1; transform: translate(-180%, -50%) scale(1.02); }
+    74%       { opacity: 1; transform: translate(-320%, -50%) scale(0.98); }
+    90%, 100% { opacity: 0; transform: translate(-400%, -50%) scale(0.85); }
+  }
+
+  /* ============ Inline AI augmentation chips (sP4) ============
+     Floating annotation chips that appear next to live-typing text. They
+     pulse, hold, then fade — making the harness's auto-augmentation visible. */
+  .ai-aug {
+    position: absolute;
+    font-family: var(--code);
+    font-size: 9.5px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border-soft);
+    background: var(--panel);
+    color: var(--text-2);
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateY(4px) scale(0.92);
+    pointer-events: none;
+    z-index: 7;
+    letter-spacing: 0.02em;
+  }
+  .ai-aug::before { content: '↳ '; opacity: 0.8; margin-right: 1px; }
+  .ai-aug.research    { color: var(--accent);  border-color: #95e35d66; background: #0d1408; box-shadow: 0 0 0 1px #95e35d22, 0 0 10px #95e35d33; }
+  .ai-aug.adversarial { color: var(--warn);    border-color: #ffb86b66; background: #1a1208; box-shadow: 0 0 0 1px #ffb86b22, 0 0 10px #ffb86b33; }
+  .ai-aug.visual      { color: var(--vishal);  border-color: #6ba0ff66; background: #0a0f18; box-shadow: 0 0 0 1px #6ba0ff22, 0 0 10px #6ba0ff33; }
+  /* Vishal-side chips */
+  .twoup-shell.vishal .ai-aug.v-research    { top: 96px;  right: 18px; }
+  .twoup-shell.vishal .ai-aug.v-adversarial { top: 124px; right: 18px; }
+  /* Akhil-side chip */
+  .twoup-shell.akhil  .ai-aug.a-research    { top: 96px;  right: 18px; }
+  body[data-stage="sP4"] .ai-aug.v-research    { animation: aiAugPulse 3.4s ease-in-out 1; animation-delay: 3.0s; animation-fill-mode: both; }
+  body[data-stage="sP4"] .ai-aug.v-adversarial{ animation: aiAugPulse 3.4s ease-in-out 1; animation-delay: 5.2s; animation-fill-mode: both; }
+  body[data-stage="sP4"] .ai-aug.a-research    { animation: aiAugPulse 3.4s ease-in-out 1; animation-delay: 4.1s; animation-fill-mode: both; }
+  @keyframes aiAugPulse {
+    0%        { opacity: 0; transform: translateY(6px) scale(0.88); }
+    18%       { opacity: 1; transform: translateY(0) scale(1.04); }
+    32%       { opacity: 1; transform: translateY(0) scale(1); }
+    72%       { opacity: 0.95; transform: translateY(0) scale(1); }
+    100%      { opacity: 0; transform: translateY(-4px) scale(0.94); }
+  }
+
+  /* ============ Notification toasts (sP5) ============
+     Pink-bordered cards that slide in from each pane's top-right.
+     Akhil-side fires at sP5 entry, Vishal-side at sP5 exit. */
+  .notif-toast {
+    position: absolute;
+    top: 60px;
+    right: 14px;
+    width: 200px;
+    background: linear-gradient(180deg, #1a0d12 0%, #140a0e 100%);
+    border: 1px solid var(--akhil);
+    border-left: 3px solid var(--akhil);
+    border-radius: 8px;
+    padding: 8px 10px 9px;
+    box-shadow: 0 0 0 1px #ff8aa822, 0 6px 20px #00000088, 0 0 14px #ff8aa844;
+    font-family: var(--sans);
+    color: var(--text);
+    opacity: 0;
+    transform: translateX(24px);
+    pointer-events: none;
+    z-index: 9;
+  }
+  .notif-toast .nt-head {
+    font-family: var(--code);
+    font-size: 9.5px;
+    letter-spacing: 0.06em;
+    color: var(--akhil);
+    margin-bottom: 3px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .notif-toast .nt-head::before {
+    content: ''; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--akhil); box-shadow: 0 0 5px var(--akhil);
+  }
+  .notif-toast .nt-body {
+    font-size: 10.5px;
+    color: var(--text-2);
+    line-height: 1.35;
+    margin-bottom: 4px;
+  }
+  .notif-toast .nt-act {
+    font-family: var(--code);
+    font-size: 9px;
+    color: var(--akhil);
+    letter-spacing: 0.04em;
+    opacity: 0.9;
+  }
+  body[data-stage="sP5"] .twoup-shell.akhil .notif-toast.toast-review-fire {
+    animation: notifSlide 3.0s cubic-bezier(.2,.8,.2,1) 1;
+    animation-delay: 0.15s;
+    animation-fill-mode: both;
+  }
+  /* Vishal-side toast fires near the end of sP5 (sP5 = 6s; trigger at ~4.0s) */
+  body[data-stage="sP5"] .twoup-shell.vishal .notif-toast.toast-review-back {
+    animation: notifSlide 2.4s cubic-bezier(.2,.8,.2,1) 1;
+    animation-delay: 4.0s;
+    animation-fill-mode: both;
+  }
+  @keyframes notifSlide {
+    0%        { opacity: 0; transform: translateX(28px) scale(0.96); }
+    14%       { opacity: 1; transform: translateX(0) scale(1.02); }
+    24%       { opacity: 1; transform: translateX(0) scale(1); }
+    78%       { opacity: 1; transform: translateX(0) scale(1); }
+    100%      { opacity: 0; transform: translateX(8px) scale(0.97); }
+  }
+
+  /* ============ Akhil-pane RESHAPE for review mode (sP5) ============
+     §1 draft collapses to a minimized strip at the top; main area transforms
+     into a review layout with sidebar + read-only text. */
+  .akhil-min-strip {
+    position: absolute;
+    top: 78px; left: 10px; right: 10px;
+    padding: 5px 9px;
+    background: linear-gradient(90deg, #140a0e 0%, #1a1014 100%);
+    border: 1px dashed #ff8aa844;
+    border-radius: 6px;
+    font-family: var(--code); font-size: 9.5px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    display: flex; align-items: center; gap: 8px;
+    opacity: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+    z-index: 6;
+    transition: opacity 500ms ease, transform 500ms cubic-bezier(.2,.8,.2,1);
+  }
+  .akhil-min-strip .ams-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--akhil); opacity: 0.7; }
+  .akhil-min-strip .ams-lbl { color: var(--akhil); }
+  .akhil-min-strip .ams-meta { margin-left: auto; color: var(--text-muted); opacity: 0.7; }
+  body[data-stage="sP5"] .twoup-shell.akhil .akhil-min-strip,
+  body[data-stage="sP6"] .twoup-shell.akhil .akhil-min-strip {
+    opacity: 1; transform: translateY(0);
+    transition-delay: 1700ms;
+  }
+  /* During sP5 the akhil body's drafting paragraph fades, and the review
+     overlay slides up. The review overlay shows a sidebar + read-only §3.2. */
+  body[data-stage="sP5"] .twoup-shell.akhil .twoup-body > h3,
+  body[data-stage="sP5"] .twoup-shell.akhil .twoup-body > .sec,
+  body[data-stage="sP5"] .twoup-shell.akhil .twoup-body > .vp {
+    opacity: 0.18;
+    transition: opacity 600ms ease 1700ms;
+    filter: blur(0.5px);
+  }
+  .akhil-review-mode {
+    position: absolute;
+    top: 110px; left: 10px; right: 10px; bottom: 12px;
+    background: var(--panel);
+    border: 1px solid #ff8aa855;
+    border-radius: 8px;
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 0;
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+    pointer-events: none;
+    z-index: 5;
+    overflow: hidden;
+    transition: opacity 600ms ease, transform 600ms cubic-bezier(.2,.8,.2,1);
+  }
+  body[data-stage="sP5"] .twoup-shell.akhil .akhil-review-mode {
+    opacity: 1; transform: translateY(0) scale(1);
+    transition-delay: 1900ms;
+  }
+  .akhil-review-mode .arm-banner {
+    position: absolute;
+    top: -10px; left: 10px;
+    font-family: var(--code); font-size: 9px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--akhil);
+    background: var(--bg);
+    padding: 2px 7px; border-radius: 999px;
+    border: 1px solid #ff8aa866;
+    z-index: 2;
+  }
+  .akhil-review-mode .arm-side {
+    background: linear-gradient(180deg, #140a0e 0%, #0e0a0c 100%);
+    border-right: 1px solid var(--border-soft);
+    padding: 10px 8px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .akhil-review-mode .arm-side .arm-h {
+    font-family: var(--code); font-size: 8.5px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 4px;
+  }
+  .akhil-review-mode .arm-side .arm-tag {
+    font-family: var(--code); font-size: 9px;
+    color: var(--text-2);
+    padding: 3px 6px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    letter-spacing: 0.02em;
+  }
+  .akhil-review-mode .arm-side .arm-tag.density { color: var(--akhil); border-color: #ff8aa844; }
+  .akhil-review-mode .arm-side .arm-tag.adv     { color: var(--warn);  border-color: #ffb86b44; }
+  .akhil-review-mode .arm-side .arm-tag.claims  { color: var(--vishal);border-color: #6ba0ff44; }
+  .akhil-review-mode .arm-read {
+    padding: 12px 14px;
+    font-family: var(--serif); font-size: 11.5px; line-height: 1.5;
+    color: var(--text-2);
+    overflow: hidden;
+    position: relative;
+  }
+  .akhil-review-mode .arm-read .arm-sec {
+    font-family: var(--code); font-size: 9px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--akhil); margin-bottom: 4px;
+  }
+  .akhil-review-mode .arm-read .arm-title {
+    font-family: var(--sans); font-weight: 600;
+    color: var(--text); font-size: 12.5px;
+    margin: 0 0 5px;
+  }
+  .akhil-review-mode .arm-read .arm-anchor {
+    display: inline-block;
+    background: #ff8aa820;
+    border-bottom: 1px dashed var(--akhil);
+    padding: 0 1px;
+    position: relative;
+  }
+  .akhil-review-mode .arm-read .arm-anchor::after {
+    content: attr(data-cmt);
+    position: absolute;
+    top: -22px; left: 0;
+    font-family: var(--code); font-size: 8.5px;
+    color: var(--akhil);
+    background: var(--panel);
+    border: 1px solid #ff8aa866;
+    border-radius: 4px;
+    padding: 1px 5px;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateY(2px);
+    pointer-events: none;
+  }
+  body[data-stage="sP5"] .akhil-review-mode .arm-read .arm-anchor.c1::after { animation: armAnchorPop 2.4s ease-out 1; animation-delay: 2.6s; animation-fill-mode: forwards; }
+  body[data-stage="sP5"] .akhil-review-mode .arm-read .arm-anchor.c2::after { animation: armAnchorPop 2.4s ease-out 1; animation-delay: 3.4s; animation-fill-mode: forwards; }
+  @keyframes armAnchorPop {
+    0%   { opacity: 0; transform: translateY(4px); }
+    20%  { opacity: 1; transform: translateY(0); }
+    85%  { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0.9; transform: translateY(0); }
+  }
+  /* sP6: review mode collapses away, akhil resumes drafting */
+  body[data-stage="sP6"] .twoup-shell.akhil .akhil-review-mode {
+    opacity: 0; transform: translateY(-6px) scale(0.97);
+    transition: opacity 400ms ease, transform 400ms ease;
+  }
+  body[data-stage="sP6"] .twoup-shell.akhil .akhil-min-strip {
+    opacity: 0; transform: translateY(-6px);
+    transition: opacity 400ms ease, transform 400ms ease;
+  }
+  body[data-stage="sP6"] .twoup-shell.akhil .twoup-body > h3,
+  body[data-stage="sP6"] .twoup-shell.akhil .twoup-body > .sec,
+  body[data-stage="sP6"] .twoup-shell.akhil .twoup-body > .vp {
+    opacity: 1; filter: blur(0);
+    transition: opacity 500ms ease 300ms, filter 500ms ease 300ms;
+  }
+
+  /* Loop indicator (sP6) — small "loop ↻" chip that fires near end of sP6 */
+  .loop-indicator {
+    position: absolute;
+    bottom: 38px; left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--code); font-size: 10px;
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    letter-spacing: 0.06em;
+    box-shadow: 0 0 0 1px #95e35d22, 0 0 12px #95e35d44;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 13;
+    white-space: nowrap;
+  }
+  body[data-stage="sP6"] .loop-indicator {
+    animation: loopFire 3.2s ease-in-out 1;
+    animation-delay: 1.8s;
+    animation-fill-mode: both;
+  }
+  @keyframes loopFire {
+    0%   { opacity: 0; transform: translateX(-50%) translateY(6px) scale(0.9); }
+    18%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.05); }
+    34%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+    80%  { opacity: 0.9; transform: translateX(-50%) translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-2px) scale(0.97); }
+  }
+
+  /* ============ Vishal-side comment anchors at sP6 ============
+     Comments materialize inline on his §3.2 text. The existing .ctx-card
+     stays — these are NEW small anchors that float beside the typed line. */
+  .v-comment-anchor {
+    position: absolute;
+    font-family: var(--code); font-size: 8.5px;
+    padding: 2px 6px; border-radius: 4px;
+    background: var(--panel);
+    border: 1px solid #ff8aa866;
+    border-left: 2px solid var(--akhil);
+    color: var(--akhil);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateX(-4px);
+    pointer-events: none;
+    z-index: 6;
+  }
+  .twoup-shell.vishal .v-comment-anchor.vca1 { top: 92px;  right: 20px; }
+  .twoup-shell.vishal .v-comment-anchor.vca2 { top: 116px; right: 20px; }
+  body[data-stage="sP6"] .twoup-shell.vishal .v-comment-anchor {
+    opacity: 1; transform: translateX(0);
+    transition: opacity 500ms ease, transform 500ms cubic-bezier(.2,.8,.2,1);
+  }
+  body[data-stage="sP6"] .twoup-shell.vishal .v-comment-anchor.vca1 { transition-delay: 400ms; }
+  body[data-stage="sP6"] .twoup-shell.vishal .v-comment-anchor.vca2 { transition-delay: 900ms; }
+
+  /* Captions for sP4–sP6 */
+  body[data-stage="sP4"] .sp-caption.cap-sp4,
+  body[data-stage="sP5"] .sp-caption.cap-sp5,
+  body[data-stage="sP6"] .sp-caption.cap-sp6 { opacity: 1; transition-delay: 500ms; }
+  .sp-caption.cap-sp4,
+  .sp-caption.cap-sp5,
+  .sp-caption.cap-sp6 { z-index: 13; bottom: 16px; }
+
+  /* The proposal/lanes layer fades under the twoup overlay in sP4+ */
+  body[data-stage="sP4"] .trajectory-layer,
+  body[data-stage="sP5"] .trajectory-layer { opacity: 0; transition: opacity 500ms ease; }
+  body[data-stage="sP6"] .trajectory-layer { opacity: 0; }
+
+  /* ============ Persistent Akhil rail (sP6 onward) ============
+     Anchored to right edge of stage. Visible from sP6 → s12. Carries Akhil's
+     current task + activity pulses so the multiplayer thesis stays in view. */
+  .akhil-persist {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: 92px;
+    background: linear-gradient(180deg, #181014 0%, #0e0a0c 100%);
+    border: 1px solid #ff8aa844;
+    border-radius: 10px;
+    display: flex; flex-direction: column;
+    align-items: stretch;
+    padding: 10px 8px;
+    gap: 8px;
+    z-index: 12;
+    opacity: 0;
+    transform: translateX(8px);
+    transition: opacity 600ms ease, transform 600ms cubic-bezier(.2,.8,.2,1), width 600ms cubic-bezier(.2,.8,.2,1), border-color 500ms ease;
+    pointer-events: none;
+  }
+  /* Mounted from sP6 onward */
+  body[data-stage="sP6"] .akhil-persist,
+  body[data-stage="s0"] .akhil-persist,
+  body[data-stage="s1"] .akhil-persist,
+  body[data-stage="s2"] .akhil-persist,
+  body[data-stage="s3"] .akhil-persist,
+  body[data-stage="s4"] .akhil-persist,
+  body[data-stage="s5"] .akhil-persist,
+  body[data-stage="s6"] .akhil-persist,
+  body[data-stage="s7"] .akhil-persist,
+  body[data-stage="s8"] .akhil-persist,
+  body[data-stage="s9"] .akhil-persist,
+  body[data-stage="s10"] .akhil-persist,
+  body[data-stage="s11"] .akhil-persist,
+  body[data-stage="s12"] .akhil-persist { opacity: 1; transform: translateX(0); }
+
+  /* Brief expansion during REVIEW (s7/s8) — show Akhil's review activity */
+  body[data-stage="s7"] .akhil-persist,
+  body[data-stage="s8"] .akhil-persist {
+    width: 168px;
+    border-color: var(--akhil);
+    box-shadow: 0 0 0 2px #ff8aa822, 0 0 18px #ff8aa833;
+  }
+  /* Reader stages (s11/s12): rail becomes a quiet byline at top-right */
+  body[data-stage="s11"] .akhil-persist,
+  body[data-stage="s12"] .akhil-persist {
+    width: 168px;
+    border-color: #ff8aa833;
+    background: linear-gradient(180deg, #14101220 0%, #0e0a0c20 100%);
+    opacity: 0.78;
+  }
+
+  .akhil-persist .ap-head {
+    display: flex; align-items: center; gap: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #ff8aa822;
+    font-family: var(--code); font-size: 9px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--akhil);
+  }
+  .akhil-persist .ap-avatar {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--akhil); color: #1a0d12;
+    font-family: var(--sans); font-weight: 600; font-size: 11px;
+    display: inline-flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 2px #ff8aa822;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .akhil-persist .ap-avatar::after {
+    content: '';
+    position: absolute;
+    right: -1px; bottom: -1px;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 1.5px solid #0e0a0c;
+    box-shadow: 0 0 5px var(--accent);
+  }
+  .akhil-persist .ap-name {
+    font-family: var(--serif); font-size: 11px; font-style: italic;
+    color: var(--text-2);
+    text-transform: none; letter-spacing: 0;
+  }
+
+  .akhil-persist .ap-task {
+    font-family: var(--sans); font-size: 10px;
+    color: var(--text-2);
+    line-height: 1.35;
+    padding: 6px 7px;
+    background: rgba(255,138,168,0.06);
+    border: 1px solid #ff8aa822;
+    border-left: 2px solid var(--akhil);
+    border-radius: 4px;
+    transition: background 600ms ease, border-color 600ms ease;
+  }
+  .akhil-persist .ap-task .ap-task-h {
+    font-family: var(--code); font-size: 8px;
+    color: var(--akhil); letter-spacing: 0.08em; text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+  /* Crossfade rail text content on stage change (driven by .rail-fade toggle in JS) */
+  .akhil-persist .ap-task-h,
+  .akhil-persist #ap-task-body,
+  .akhil-persist #ap-status {
+    transition: opacity 280ms ease;
+  }
+  body.rail-fade .akhil-persist .ap-task-h,
+  body.rail-fade .akhil-persist #ap-task-body,
+  body.rail-fade .akhil-persist #ap-status { opacity: 0.15; }
+  .akhil-persist .ap-status {
+    font-family: var(--code); font-size: 8.5px;
+    color: var(--text-muted); letter-spacing: 0.04em;
+    margin-top: auto;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .akhil-persist .ap-status::before {
+    content: '';
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--akhil);
+    box-shadow: 0 0 5px var(--akhil);
+    animation: pulse 2.4s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  /* Activity feed — only visible during expanded states (s7/s8/s11/s12) */
+  .akhil-persist .ap-feed {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    font-family: var(--code); font-size: 8.5px;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+  body[data-stage="s7"] .akhil-persist .ap-feed,
+  body[data-stage="s8"] .akhil-persist .ap-feed,
+  body[data-stage="s11"] .akhil-persist .ap-feed,
+  body[data-stage="s12"] .akhil-persist .ap-feed { display: flex; }
+  .akhil-persist .ap-feed .row {
+    padding: 4px 6px;
+    background: var(--panel-2);
+    border-radius: 3px;
+    border-left: 1.5px solid var(--akhil);
+    color: var(--text-2);
+  }
+  .akhil-persist .ap-feed .row b { color: var(--akhil); font-weight: 500; }
+
+  /* Subtle activity pulse — runs continuously, hints Akhil is alive */
+  .akhil-persist .ap-pulse {
+    position: absolute;
+    top: 38px; right: 6px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--akhil);
+    box-shadow: 0 0 6px var(--akhil);
+    animation: apPulse 5s ease-in-out infinite;
+    opacity: 0;
+  }
+  body[data-stage="s0"] .akhil-persist .ap-pulse,
+  body[data-stage="s1"] .akhil-persist .ap-pulse,
+  body[data-stage="s2"] .akhil-persist .ap-pulse,
+  body[data-stage="s3"] .akhil-persist .ap-pulse,
+  body[data-stage="s4"] .akhil-persist .ap-pulse,
+  body[data-stage="s5"] .akhil-persist .ap-pulse,
+  body[data-stage="s6"] .akhil-persist .ap-pulse,
+  body[data-stage="s9"] .akhil-persist .ap-pulse,
+  body[data-stage="s10"] .akhil-persist .ap-pulse { opacity: 1; }
+  @keyframes apPulse {
+    0%, 20% { transform: scale(1); opacity: 1; }
+    35%     { transform: scale(2.6); opacity: 0; }
+    36%, 100% { transform: scale(1); opacity: 0; }
+  }
+
+  /* Make room for the persistent rail in the main workspace */
+  body[data-stage="s2"] .stage-inner,
+  body[data-stage="s3"] .stage-inner,
+  body[data-stage="s4"] .stage-inner,
+  body[data-stage="s5"] .stage-inner,
+  body[data-stage="s6"] .stage-inner,
+  body[data-stage="s9"] .stage-inner,
+  body[data-stage="s10"] .stage-inner { right: 108px; }
+  body[data-stage="s7"] .stage-inner,
+  body[data-stage="s8"] .stage-inner,
+  body[data-stage="s11"] .stage-inner,
+  body[data-stage="s12"] .stage-inner { right: 184px; }
+  .stage-inner { transition: right 700ms cubic-bezier(.2,.8,.2,1), grid-template-columns 700ms cubic-bezier(.2,.8,.2,1); }
+  /* Live border also shrinks to clear the rail */
+  .live-border { transition: border-color 700ms ease, box-shadow 700ms ease, right 700ms cubic-bezier(.2,.8,.2,1); }
+  body[data-stage="s9"] .live-border,
+  body[data-stage="s10"] .live-border { right: 116px; }
+  body[data-stage="s11"] .live-border,
+  body[data-stage="s12"] .live-border { right: 192px; }
+  /* Also shift the bootstrap card / atoms layer's visual center slightly so they don't sit under the rail */
+  body[data-stage="s0"] .bootstrap-stage-flow,
+  body[data-stage="s1"] .bootstrap-stage-flow { padding-right: 108px; transition: padding 700ms cubic-bezier(.2,.8,.2,1); }
+  body[data-stage="s2"] .atoms { right: 108px; }
+  /* Approval ribbon, manifest callout etc. should not overflow under the rail */
+  body[data-stage="s8"] .approval-ribbon { right: 184px; transition: right 600ms ease; }
+  /* Manifest callout: shift its anchor leftward to balance against the rail */
+  body[data-stage="s12"] .manifest-callout { left: calc(50% - 92px); }
+  /* Series-reader caption: same shift so it stays centered on the visible canvas */
+  body[data-stage="s12"] .series-reader-cap { left: calc(50% - 92px); }
+  /* Prior bar (reader stages): shift slightly left to clear the rail */
+  body[data-stage="s11"] .prior-bar,
+  body[data-stage="s12"] .prior-bar { left: calc(50% - 92px); }
+
+  /* ---------- Reduced motion: lock to final state ---------- */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
+    }
+    .sp-card .title { width: auto !important; }
+    .sp-card { opacity: 1 !important; transform: none !important; }
+    .task-card { opacity: 1 !important; transform: none !important; }
+    .sp-caption { opacity: 0 !important; }
+    .series-reader-cap { opacity: 1 !important; }
+    .twoup-layer { opacity: 0 !important; pointer-events: none; }
+    .akhil-persist { opacity: 0.78 !important; transform: none !important; }
+  }
+</style>
+</head>
+<body data-stage="s0">
+<div class="app">
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span>doclayer</div>
+    <div class="crumb">/ <b>lifecycle</b> / <span id="phase-crumb">bootstrap</span></div>
+    <div class="right">
+      <span class="muted" id="phase-indicator">phase · <b style="color:var(--accent)">PLAN</b></span>
+      <div class="avatar">V</div>
+      <div class="avatar akhil">A</div>
+    </div>
+  </div>
+
+  <div class="harness-strip">
+    <span class="phase" id="harness-phase">PLAN</span>
+    <span class="chain">chain · <b id="chain-id">DOC_PLAN/v1</b></span>
+    <span class="pip composing" id="pip-status">architect: composing</span>
+  </div>
+
+  <div class="ribbon">
+    <span class="step" data-step="series"><span class="mark">1</span>Series</span>
+    <span class="arr">→</span>
+    <span class="step" data-step="bootstrap"><span class="mark">2</span>Bootstrap</span>
+    <span class="arr">→</span>
+    <span class="step" data-step="plan"><span class="mark">3</span>Plan</span>
+    <span class="arr">→</span>
+    <span class="step" data-step="draft"><span class="mark">4</span>Draft</span>
+    <span class="arr">→</span>
+    <span class="step" data-step="review"><span class="mark">5</span>Review</span>
+    <span class="arr">→</span>
+    <span class="step" data-step="publish"><span class="mark">6</span>Publish</span>
+    <span class="arr">→</span>
+    <span class="step" data-step="reader"><span class="mark">7</span>Reader</span>
+    <span style="margin-left:auto;font-family:var(--code);font-size:10px;color:var(--text-muted);letter-spacing:0.04em;">~2 min playthrough · multiplayer · loops</span>
+  </div>
+
+  <div class="stage">
+    <!-- Live border (s10+) -->
+    <div class="live-border"></div>
+
+    <!-- Reader prior pills (s10+) -->
+    <div class="prior-bar">
+      <div class="prior-pill-flow engineer">engineer</div>
+      <div class="prior-pill-flow pm">PM</div>
+      <div class="prior-pill-flow researcher">researcher</div>
+    </div>
+
+    <!-- Persistent Akhil rail (sP6 → s12) -->
+    <div class="akhil-persist" aria-hidden="true">
+      <div class="ap-head">
+        <div class="ap-avatar">A</div>
+        <span class="ap-name">Akhil</span>
+      </div>
+      <div class="ap-task">
+        <div class="ap-task-h" id="ap-task-h">art 2 · §1 draft</div>
+        <span id="ap-task-body">drafting · §1 RLMs framing critique</span>
+      </div>
+      <div class="ap-feed" id="ap-feed">
+        <div class="row"><b>drafted</b> §1.2 ceiling argument</div>
+        <div class="row"><b>commented</b> "tighten §3.2 claim"</div>
+        <div class="row"><b>approved</b> §3.3 · 1 suggestion</div>
+      </div>
+      <div class="ap-status" id="ap-status">writing · 4m</div>
+      <div class="ap-pulse"></div>
+    </div>
+
+    <!-- Two-window collaboration overlay (sP4 / sP5 / sP6) -->
+    <div class="twoup-layer" aria-hidden="true">
+      <!-- Vishal's window (left) -->
+      <div class="twoup-shell vishal">
+        <div class="twoup-strip">
+          <span class="who">vishal</span>
+          <span class="prior-tag">prior · exploration</span>
+          <span class="ts-meta">DOC_DRAFT/v1</span>
+        </div>
+        <div class="twoup-task">
+          <span class="tt-id">art 2 · §3.2</span>
+          <span class="tt-body">drafting · stuck on framing</span>
+          <span class="tt-pill blocked" id="vishal-pill">blocked · framing unresolved</span>
+        </div>
+        <!-- Inline AI augmentation chips (sP4) -->
+        <span class="ai-aug research v-research">research · arxiv supports this</span>
+        <span class="ai-aug adversarial v-adversarial">adversarial · counter on "chassis"?</span>
+        <!-- Notification toast at sP5 exit: akhil's review came back -->
+        <div class="notif-toast toast-review-back">
+          <div class="nt-head">akhil · reviewed §3.2 · 3 comments</div>
+          <div class="nt-body">1 critical · 2 suggestions</div>
+          <div class="nt-act">see comments ↗</div>
+        </div>
+        <!-- Comment anchors that materialize on §3.2 at sP6 -->
+        <span class="v-comment-anchor vca1">lean denser here</span>
+        <span class="v-comment-anchor vca2">tighten recursive claim</span>
+        <div class="twoup-body">
+          <div class="sec">§3.2 · RLMs framing</div>
+          <h3>Recursion as the prior</h3>
+          <p class="vp"><span data-typewriter data-tw-text="The trouble with reward shaping is that what feels right at step 5 can poison step 50 — the harness sees only the local gradient unless the architect threads memory through the manifest" data-tw-delay="12000" data-tw-loop="123500" data-tw-speed="0.7"></span><span class="type-caret"></span></p>
+          <div class="ctx-card">
+            <div class="h">akhil's comments · §3.2</div>
+            <div class="cmt">lean denser here — the framing reads thin against §1</div>
+            <div class="cmt">tighten the recursive claim <b>before</b> §3.3 lands</div>
+            <div class="cmt">multiplayer thread should follow this, not precede it</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sync gutter -->
+      <div class="twoup-gutter">
+        <span class="gl">sync · yjs</span>
+        <span class="gf">live</span>
+        <span class="twoup-ev v v1">vishal · typed · §3.2 +24ch</span>
+        <span class="twoup-ev a a1">akhil · typed · §1 +18ch</span>
+        <span class="twoup-ev v v2">yjs · ops 24</span>
+        <span class="twoup-ev a a2">akhil · §1 +42ch</span>
+        <span class="twoup-ev handoff-v2a">vishal → akhil · §3.2 draft ready · review?</span>
+        <span class="twoup-ev handoff">akhil → vishal · §1 feedback ready · comments on §3.2 framing</span>
+        <span class="twoup-ev g agent-r">agent · research delivered · §3.2 refs</span>
+      </div>
+
+      <!-- Akhil's window (right) — Akhil is ALSO writing, just a different section -->
+      <div class="twoup-shell akhil">
+        <div class="twoup-strip">
+          <span class="who">akhil</span>
+          <span class="prior-tag">prior · research density</span>
+          <span class="ts-meta">DOC_DRAFT/v1</span>
+        </div>
+        <div class="twoup-task">
+          <span class="tt-id">art 2 · §1</span>
+          <span class="tt-body">drafting · §1 RLMs framing critique</span>
+          <span class="tt-pill in-progress">in-progress</span>
+        </div>
+        <!-- Inline AI augmentation chip (sP4) -->
+        <span class="ai-aug research a-research">research · density refs</span>
+        <!-- Notification toast at sP5 entry: vishal sent §3.2 for review -->
+        <div class="notif-toast toast-review-fire">
+          <div class="nt-head">vishal · §3.2 sent for review</div>
+          <div class="nt-body">240 words · 3 AI suggestions accepted</div>
+          <div class="nt-act">review now ↗</div>
+        </div>
+        <!-- Minimized §1 strip — appears once review mode takes over -->
+        <div class="akhil-min-strip">
+          <span class="ams-dot"></span>
+          <span class="ams-lbl">§1 draft</span>
+          <span>resume later</span>
+          <span class="ams-meta">312 chars</span>
+        </div>
+        <!-- Review-mode overlay: harness reshapes the workspace for §3.2 review -->
+        <div class="akhil-review-mode">
+          <span class="arm-banner">harness · review mode · §3.2</span>
+          <div class="arm-side">
+            <div class="arm-h">review areas</div>
+            <div class="arm-tag density">density</div>
+            <div class="arm-tag adv">adversarial flags</div>
+            <div class="arm-tag claims">claims</div>
+          </div>
+          <div class="arm-read">
+            <div class="arm-sec">§3.2 · vishal · read-only</div>
+            <div class="arm-title">Recursion as the prior</div>
+            <div>The trouble with reward shaping is that what feels right at <span class="arm-anchor c1" data-cmt="lean denser here">step 5 can poison step 50</span> — the harness sees only the local gradient unless the architect <span class="arm-anchor c2" data-cmt="tighten the recursive claim">threads memory through the manifest</span>.</div>
+          </div>
+        </div>
+        <div class="twoup-body">
+          <div class="sec">§1 · why scaling LLMs doesn't solve it</div>
+          <h3>The shape of the ceiling</h3>
+          <p class="vp"><span data-typewriter data-tw-text="Scaling buys you fluency, not strategy. The harness is where strategy lives — and no amount of parameter count substitutes for the recursive loop that lets a system decide what to think about next" data-tw-delay="13200" data-tw-loop="123500" data-tw-speed="0.7"></span><span class="type-caret"></span></p>
+        </div>
+      </div>
+      <!-- Loop indicator: the cycle has completed, will happen again next chunk -->
+      <div class="loop-indicator">loop ↻ · type → augment → review → comments · next chunk</div>
+    </div>
+
+    <!-- Trajectory layer (sP1–sP3) — series proposal + lanes -->
+    <div class="trajectory-layer">
+      <div class="series-proposal">
+        <div class="sp-head">
+          <span class="dot"></span>
+          Architect · series proposal
+          <span class="meta">DOC_SERIES/v1</span>
+        </div>
+        <div class="sp-cards">
+          <div class="sp-card c1">
+            <span class="num">Article 1</span>
+            <span class="title">What is a harness?</span>
+            <span class="tag">audience · AI engineers</span>
+          </div>
+          <div class="sp-card c2">
+            <span class="num">Article 2</span>
+            <span class="title">Why scaling LLMs doesn't solve it</span>
+            <span class="tag">audience · builders</span>
+          </div>
+          <div class="sp-card c3">
+            <span class="num">Article 3</span>
+            <span class="title">Building meta-harnesses</span>
+            <span class="tag">audience · practitioners</span>
+          </div>
+          <div class="sp-card c4">
+            <span class="num">Article 4</span>
+            <span class="title">Multiplayer &amp; evals</span>
+            <span class="tag">audience · researchers</span>
+          </div>
+        </div>
+        <div class="sp-approve">approve · 2 / 2 authors</div>
+      </div>
+
+      <div class="lanes">
+        <div class="lane akhil">
+          <div class="lane-label"><b>Akhil</b><span class="role">writes · prior leans density</span></div>
+          <div class="lane-cards">
+            <div class="task-card t1">
+              <div class="tc-top"><div class="tc-h">art 1 · §intro</div><span class="pill queued">queued</span></div>
+              drafting lead claim + framing
+              <div class="tc-src">from akhil · self</div>
+            </div>
+            <div class="task-card t2 zoom">
+              <div class="tc-top"><div class="tc-h">art 2 · §1 scaling-limits</div><span class="pill in-progress">drafting</span></div>
+              writing §1 — why scaling fails
+              <div class="tc-src from-agent">agent · research feeds refs</div>
+            </div>
+            <div class="task-card t3">
+              <div class="tc-top"><div class="tc-h">art 3 · §genetic</div><span class="pill awaiting-ai">awaiting-AI</span></div>
+              drafting · algorithmic search prior
+              <div class="tc-src from-agent">agent · adversarial pass</div>
+            </div>
+            <div class="task-card t4">
+              <div class="tc-top"><div class="tc-h">art 4 · §evals</div><span class="pill queued">queued</span></div>
+              drafting · rubric grammar
+              <div class="tc-src">from akhil · self</div>
+            </div>
+          </div>
+        </div>
+        <div class="lane vishal">
+          <div class="lane-label"><b>Vishal</b><span class="role">writes · prior leans exploration</span></div>
+          <div class="lane-cards">
+            <div class="task-card t1">
+              <div class="tc-top"><div class="tc-h">art 1 · §wedge</div><span class="pill queued">queued</span></div>
+              drafting concrete examples
+              <div class="tc-src">from vishal · self</div>
+            </div>
+            <div class="task-card t2 zoom">
+              <div class="tc-top"><div class="tc-h">art 2 · §3.2 RLMs framing</div><span class="pill in-progress">drafting</span></div>
+              writing §3.2 — recursion as prior
+              <div class="tc-src from-agent">agent · research feeds refs</div>
+            </div>
+            <div class="task-card t3">
+              <div class="tc-top"><div class="tc-h">art 3 · §RLMs</div><span class="pill awaiting-review">awaiting-review</span></div>
+              drafting · recursive frame
+              <div class="tc-src from-agent">agent · visual pass</div>
+            </div>
+            <div class="task-card t4">
+              <div class="tc-top"><div class="tc-h">art 4 · §multiplayer</div><span class="pill queued">queued</span></div>
+              drafting · two-author surface
+              <div class="tc-src">from vishal · self</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ghosted agent column (hint at R/A/V agents that fire later) -->
+      <div class="agent-rail-ghost" aria-hidden="true">
+        <div class="arg-head">AI agents<br>standby</div>
+        <div class="arg-pip research"><div class="arg-ico">R</div><span class="arg-lbl">research</span></div>
+        <div class="arg-pip adversarial"><div class="arg-ico">A</div><span class="arg-lbl">adversarial</span></div>
+        <div class="arg-pip visual"><div class="arg-ico">V</div><span class="arg-lbl">visual</span></div>
+      </div>
+      <div class="sp-caption cap-sp1">the architect proposed a trajectory · <b>4 articles</b> · ~6 weeks</div>
+      <div class="sp-caption cap-sp2">both authors write · sections distributed by prior · <b>akhil</b> leans density, <b>vishal</b> leans exploration</div>
+      <div class="sp-caption cap-sp4"><b>two writers</b> · llm auto-augments while typing · research · adversarial · grounding</div>
+      <div class="sp-caption cap-sp5"><b>review fires</b> · notification → akhil's workspace reshapes to review mode → comments return to vishal</div>
+      <div class="sp-caption cap-sp6">single-article zoom · <b>akhil still working</b> in parallel · rail stays for the rest of the playthrough</div>
+
+      <!-- Counter strip (sP3): mirrors 08's thesis anchor -->
+      <div class="flow-counter" aria-hidden="true">
+        <span class="fc-label">distribution · ready</span>
+        <span class="fc-stat"><b>4</b><span class="fc-key">articles</span></span>
+        <span class="fc-sep">·</span>
+        <span class="fc-stat"><b>2</b><span class="fc-key">lanes</span></span>
+        <span class="fc-sep">·</span>
+        <span class="fc-stat"><b>3</b><span class="fc-key">agents armed</span></span>
+        <span class="fc-sep">·</span>
+        <span class="fc-stat"><b>1</b><span class="fc-key">architect</span></span>
+        <span class="fc-vs">vs. <span class="fc-vs-b">1</span> shared cursor</span>
+      </div>
+    </div>
+
+    <!-- Bootstrap form (s0–s1) -->
+    <div class="bootstrap-stage-flow">
+      <div class="bootstrap-card">
+        <h2 style="margin:0 0 4px; font-size:20px; letter-spacing:-0.01em;">What are you writing?</h2>
+        <div class="sub" style="color:var(--text-muted);font-size:12px;margin-bottom:18px;">Four answers. The workspace composes itself.</div>
+        <div class="field">
+          <label>Title</label>
+          <div class="input typing" id="bf1"></div>
+        </div>
+        <div class="field">
+          <label>Co-authors</label>
+          <div class="input typing" id="bf2"></div>
+        </div>
+        <div class="field">
+          <label>Audience</label>
+          <div class="input typing" id="bf3"></div>
+        </div>
+        <div class="field">
+          <label>Output</label>
+          <div class="input typing" id="bf4"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Atom snap stage (s2) -->
+    <div class="atoms">
+      <div class="atom-r a1"><span class="cap">phase-tab</span></div>
+      <div class="atom-r a2"><span class="cap">outline-tree</span></div>
+      <div class="atom-r a3"><span class="cap">document-block</span></div>
+      <div class="atom-r a4"><span class="cap">evidence-panel</span></div>
+      <div class="atom-r a5"><span class="cap">tension-tracker</span></div>
+    </div>
+
+    <!-- Main morphing workspace (s3+) -->
+    <div class="stage-inner">
+      <!-- LEFT: outline -->
+      <div class="col left">
+        <div class="panel-h">Outline <span class="meta" id="outline-meta">8 items</span></div>
+        <div class="panel-b">
+          <ul class="outline-flow">
+            <li><span class="num">1</span>What is a harness?</li>
+            <li><span class="num">2</span>Why scaling LLMs doesn't solve it</li>
+            <li class="active"><span class="num">3</span>Meta-harnesses</li>
+            <li class="nested"><span class="num">3.1</span>Genetic algorithms</li>
+            <li class="nested"><span class="num">3.2</span>Short/long-term loss</li>
+            <li class="nested"><span class="num">3.3</span>RLMs</li>
+            <li><span class="num">4</span>Multiplayer authoring</li>
+            <li><span class="num">5</span>Reader-as-harness</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- CENTER: editor -->
+      <div class="col center" style="position:relative;">
+        <div class="panel-h doc-header" style="background:var(--panel);">
+          <span class="doc-pin">DOC</span>
+          <span class="doc-title" id="doc-title">Meta-harnesses</span>
+          <span class="meta wc">draft <b id="wc-draft">0</b> · <b id="wc-words">0</b> words · <b id="wc-time">just now</b></span>
+        </div>
+
+        <!-- Approval ribbon (s8) -->
+        <div class="approval-ribbon">approved by Akhil &amp; Vishal · 8 of 8 sections</div>
+
+        <!-- Suggestion chips (s7) -->
+        <div class="chip-row">
+          <span class="flow-chip c1 dismiss-1">tighten claim density · §3.2</span>
+          <span class="flow-chip c2 accept-1">cite Anthropic RFs · §3.3</span>
+          <span class="flow-chip c3 accept-2">add reader callout · §4</span>
+          <span class="flow-chip c4 dismiss-2">break into two sentences · §3</span>
+        </div>
+
+        <!-- Cursors -->
+        <div class="flow-cursor vishal" data-name="Vishal"></div>
+        <div class="flow-cursor akhil" data-name="Akhil"></div>
+
+        <div class="editor-flow">
+          <h1>Meta-harnesses</h1>
+          <div class="subtitle">A series — by Akhil R &amp; Vishal Tandale</div>
+          <h2>What is a harness?</h2>
+          <p class="p1">A harness is the shell around a model — the prompts, tools, memory, and UI that decide what the model sees and what it can do. Most teams treat the harness as fixed scaffolding.</p>
+          <p class="p2">The interesting move is to author the harness itself: an LLM emits a typed UI manifest per phase, and the editor reshapes around the task at hand.</p>
+          <p class="p3">Planning looks like a research scratchpad. Drafting collapses to one editor. Review becomes a diff. Publishing produces a reader-harness that adapts to each reader's prior.</p>
+        </div>
+
+        <!-- Reader variants (s11–s12) -->
+        <div class="reader-variant engineer">
+          <h1>Meta-harnesses</h1>
+          <div style="font-family:var(--code);font-size:10px;color:var(--accent);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:12px;">bound to: engineer · code background</div>
+          <p>A harness wraps a model with prompts, tools, memory, and UI. Teams treat it as fixed scaffolding — it shouldn't be.</p>
+          <div class="code-snip">type Manifest = { phase: Phase; root: Node[]; meta: { docId, authors } };</div>
+          <p>An LLM (the Architect) emits one Manifest per phase. The Renderer walks it. Pin/dismiss feedback survives refines.</p>
+        </div>
+        <div class="reader-variant researcher">
+          <h1>Meta-harnesses</h1>
+          <div style="font-family:var(--code);font-size:10px;color:var(--akhil);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:12px;">bound to: researcher · ML background</div>
+          <p>If the model's harness is the policy's environment, then learning a harness is meta-learning: the outer loop optimizes the shell that constrains the inner policy.</p>
+          <div class="analogy" style="border-left-color:var(--akhil);">Reader-harness ≈ amortized inference: the published artifact carries a small lookup binding that re-renders the manifest for each reader prior.</div>
+          <p>Trace events power offline eval. Pinned panels become a per-author preference summary that biases future Architect output.</p>
+        </div>
+
+        <!-- Manifest callout (s12) -->
+        <div class="manifest-callout">
+          <span class="lead">shipped</span>
+          <span><b>frozen</b> manifest</span><span class="sep">·</span>
+          <span><b>18KB</b> bundle</span><span class="sep">·</span>
+          <span><b>3</b> binding sets</span><span class="sep">·</span>
+          <span><b>2</b> co-authors</span><span class="sep">·</span>
+          <span><b>series of 4</b> · 1 of 4 live</span>
+        </div>
+
+        <!-- Series reader caption (s12) -->
+        <div class="series-reader-cap">article 2 live · <b>3 more</b> to go in the series</div>
+      </div>
+
+      <!-- RIGHT: evidence / tension -->
+      <div class="col right">
+        <div class="panel-h">Evidence <span class="meta" id="evidence-meta">7 sources</span></div>
+        <div class="panel-b">
+          <div class="evidence-flow">
+            <div class="card">
+              <div class="src">raw.works</div>
+              <div>RLMs are the new reasoning models</div>
+            </div>
+            <div class="card">
+              <div class="src">x.com/tanayj</div>
+              <div>Highest talent density intern group</div>
+            </div>
+            <div class="card">
+              <div class="src">youtube.com</div>
+              <div>Meta-harnesses &amp; RLMs talk</div>
+            </div>
+            <div class="card">
+              <div class="src">x.com/paraschopra</div>
+              <div>Anthropic RFs</div>
+            </div>
+          </div>
+
+          <!-- Tension tracker — instantiates the named atom with real contradictions -->
+          <div class="tension-flow">
+            <div class="th">tension-tracker <span class="meta">3 open</span></div>
+            <div class="tn t1">
+              <div class="hd">unresolved</div>
+              <div class="bd">Online vs offline harness — overcomplication, or recursive truth?</div>
+              <div class="ax">akhil ↔ vishal · 2 turns</div>
+              <div class="meta-tail">resolved by akhil's last comment</div>
+            </div>
+            <div class="tn t2">
+              <div class="hd">open</div>
+              <div class="bd">Frame as a paper, a Substack, or a series?</div>
+              <div class="ax">akhil leans series</div>
+            </div>
+            <div class="tn t3">
+              <div class="hd">open</div>
+              <div class="bd">Eval framing — single rubric, or recursive at every layer?</div>
+              <div class="ax">vishal · proposed</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Build overlay (s9) -->
+    <div class="build-overlay">
+      <div class="build-card">
+        <div class="head">
+          <span>publish · DOC_PUBLISH/v1</span>
+          <span style="color:var(--text-muted);">doclayer.live/meta-harnesses</span>
+        </div>
+        <div class="build-step b1"><span class="icon"></span>compiling manifest</div>
+        <div class="build-step b2"><span class="icon"></span>freezing bindings</div>
+        <div class="build-step b3"><span class="icon"></span>bundling reader-harness · 18KB</div>
+        <div class="build-step b4"><span class="icon"></span>live</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span class="live">harness live</span>
+    <span class="stage-label">stage · <b id="stage-name">bootstrap</b></span>
+    <span>chain · <b id="status-chain">DOC_PLAN/v1</b></span>
+    <span class="elapsed" style="margin-left:auto;">elapsed · <b id="elapsed">00:00</b> / 02:00</span>
+  </div>
+</div>
+
+<div class="scenario-skip">
+  <a href="index.html">all</a>
+  <span class="div">/</span>
+  <a href="01-bootstrap.html">01</a>
+  <a href="02-planning.html">02</a>
+  <a href="03-drafting.html">03</a>
+  <a href="04-review.html">04</a>
+  <a href="05-publish.html">05</a>
+  <a href="06-reader-harness.html">06</a>
+</div>
+
+<script>
+  // Stages: sP1/sP2/sP3 (pre — series, distribute, zoom) → sP4 (two-window
+  // parallel work) → sP5 (cross-collab handoff) → sP6 (shrink akhil to
+  // persistent rail) → s0..s12 (single-article lifecycle, akhil-rail visible).
+  const STAGES = [
+    ['sP1', 0.0,   'PLAN',    'DOC_SERIES/v1',  'architect: proposing',     'series',    'series · proposal',    'series'],
+    ['sP2', 3.0,   'PLAN',    'DOC_SERIES/v1',  'architect: distributing',  'series',    'series · distribute',  'series'],
+    ['sP3', 6.0,   'PLAN',    'DOC_SERIES/v1',  'architect: zoom · art 2',  'series',    'series · zoom',        'series · article 2'],
+    ['sP4', 11.5,  'DRAFT',   'DOC_PARALLEL/v1','binding: yjs-sync · 2 windows','draft',  'parallel · two windows','article 2 · parallel work'],
+    ['sP5', 22.0,  'DRAFT',   'DOC_PARALLEL/v1','akhil → vishal · §1 feedback', 'draft',  'parallel · review',    'article 2 · cross-collab'],
+    ['sP6', 28.0,  'DRAFT',   'DOC_PARALLEL/v1','akhil → persistent rail',  'draft',     'parallel · rail',      'article 2 · single zoom'],
+    ['s0',  33.5,  'PLAN',    'DOC_BOOT/v0',    'architect: idle',          'bootstrap', 'bootstrap',            'bootstrap'],
+    ['s1',  35.5,  'PLAN',    'DOC_BOOT/v0',    'architect: listening',     'bootstrap', 'intent-form',          'bootstrap · form'],
+    ['s2',  40.0,  'PLAN',    'DOC_PLAN/v1',    'architect: composing',     'bootstrap', 'snap',                 'bootstrap · snap'],
+    ['s3',  43.0,  'PLAN',    'DOC_PLAN/v1',    'architect: composing',     'plan',      'plan',                 'plan'],
+    ['s4',  50.0,  'PLAN',    'DOC_PLAN/v1',    'binding: yjs-sync',        'plan',      'plan · cursors',       'plan'],
+    ['s5',  55.5,  'DRAFT',   'DOC_DRAFT/v1',   'binding: yjs-sync',        'draft',     'draft',                'draft'],
+    ['s6',  60.5,  'DRAFT',   'DOC_DRAFT/v1',   'authors: typing',          'draft',     'draft · typing',       'draft'],
+    ['s7',  72.0,  'REVIEW',  'DOC_REVIEW/v1',  'architect: reviewing',     'review',    'review',               'review'],
+    ['s8',  80.5,  'REVIEW',  'DOC_REVIEW/v1',  'authors: approving',       'review',    'review · approve',     'review'],
+    ['s9',  86.5,  'PUBLISH', 'DOC_PUBLISH/v1', 'pipeline: building',       'publish',   'publish · build',      'publish'],
+    ['s10', 93.5,  'PUBLISH', 'DOC_PUBLISH/v1', 'live · CDN edge',          'publish',   'publish · live',       'publish'],
+    ['s11', 100.5, 'READER',  'DOC_READER/v1',  'binding: engineer',        'reader',    'reader · engineer',    'reader'],
+    ['s12', 111.5, 'READER',  'DOC_READER/v1',  'binding: researcher',      'reader',    'reader · settle',      'reader'],
+  ];
+  const TOTAL = 118.5;
+  const REST = 5.0;
+
+  const RIBBON_ORDER = ['series','bootstrap','plan','draft','review','publish','reader'];
+
+  const PHASE_CLASS = { PLAN: '', DRAFT: 'draft', REVIEW: 'review', PUBLISH: 'publish', READER: 'reader' };
+
+  const body = document.body;
+  const phaseEl = document.getElementById('harness-phase');
+  const chainEl = document.getElementById('chain-id');
+  const pipEl = document.getElementById('pip-status');
+  const stageNameEl = document.getElementById('stage-name');
+  const statusChainEl = document.getElementById('status-chain');
+  const elapsedEl = document.getElementById('elapsed');
+  const phaseCrumbEl = document.getElementById('phase-crumb');
+  const phaseIndicatorEl = document.getElementById('phase-indicator');
+
+  const ribbonSteps = document.querySelectorAll('.ribbon .step');
+
+  const docTitleEl = document.getElementById('doc-title');
+  const apTaskH    = document.getElementById('ap-task-h');
+  const apTaskBody = document.getElementById('ap-task-body');
+  const apStatus   = document.getElementById('ap-status');
+
+  // Per-stage Akhil-rail content (drives the persistent-rail mechanism)
+  const AKHIL_RAIL = {
+    'sP6': { h: 'reviewing vishal · §3.2',  b: 'returned 3 comments · resuming §1',     st: 'review sent · 0m'  },
+    's0':  { h: 'art 2 · §1 draft',        b: 'drafting · §1 RLMs framing critique',   st: 'writing · 1m'      },
+    's1':  { h: 'art 2 · §1 draft',        b: 'drafting · §1 opening claim',           st: 'writing · 2m'      },
+    's2':  { h: 'art 2 · §1 draft',        b: 'iterating · §1.2 ceiling argument',     st: 'writing · 3m'      },
+    's3':  { h: 'art 2 · §1 draft',        b: 'tightening §1.3 close · own section',   st: 'writing · 4m'      },
+    's4':  { h: 'art 2 · §1 draft',        b: 'reading vishal\'s §3 in parallel',      st: 'writing · 5m'      },
+    's5':  { h: 'art 2 · §1 draft',        b: 'drafting §1 · peeking at §3.2',         st: 'writing · 6m'      },
+    's6':  { h: 'art 2 · §1 wrap',         b: 'wrapping §1 · queuing §3 review',       st: 'writing · 7m'      },
+    's7':  { h: 'reviewing vishal · §3.2', b: 'review pass · 2 comments left',         st: 'reviewing · 8m'    },
+    's8':  { h: 'approved · §3.3',         b: 'approved §3.3 · 1 suggestion · 8/8',    st: 'approving · 9m'    },
+    's9':  { h: 'art 2 · publish · co-sign', b: 'co-signing manifest freeze',          st: 'co-signing · 10m'  },
+    's10': { h: 'art 2 · live',            b: 'verifying reader-harness · prod',       st: 'live · just now'   },
+    's11': { h: 'series lead · @akhil',    b: 'co-author · joint byline',              st: 'live · attribution'},
+    's12': { h: 'series lead · @akhil',    b: 'co-author · joint byline',              st: 'live · attribution'},
+  };
+
+  function applyStage(s) {
+    body.setAttribute('data-stage', s[0]);
+    // Pre-stages (sP1..sP6) bypass main-flow class toggles unless they should
+    // act like draft stages (sP4–sP6 enable phase-draft tinting).
+    const isPre = s[0].charAt(1) === 'P';
+    const idx = isPre ? -1 : parseInt(s[0].slice(1), 10);
+    body.classList.toggle('show-outline',  idx >= 3 && idx <= 9);
+    body.classList.toggle('show-evidence', idx >= 3 && idx <= 8);
+    body.classList.toggle('show-editor',   idx >= 4 && idx <= 12);
+    body.classList.toggle('show-p1',       idx >= 6);
+    body.classList.toggle('show-p2',       idx >= 6);
+    body.classList.toggle('show-p3',       idx >= 7);
+    body.classList.toggle('live',          idx >= 10);
+    body.classList.toggle('reader-mode',   idx >= 11);
+    body.classList.toggle('show-cursors',  idx >= 4 && idx <= 6);
+    // Doc-title: once we zoom into article 2 (sP3+), the pin reflects that
+    // we're inside ONE article of a 4-piece series. The two-window stages
+    // already make it explicit ("article 2 · parallel work").
+    if (docTitleEl) {
+      const titleMap = {
+        'sP1': 'Meta-harnesses · series',
+        'sP2': 'Meta-harnesses · series',
+        'sP3': 'Meta-harnesses · article 2 of 4',
+        'sP4': 'Meta-harnesses · article 2 · parallel',
+        'sP5': 'Meta-harnesses · article 2 · cross-collab',
+        'sP6': 'Meta-harnesses · article 2 of 4',
+      };
+      docTitleEl.textContent = titleMap[s[0]] || 'Meta-harnesses · article 2 of 4';
+    }
+    // Persistent Akhil rail content — quick crossfade so updates don't jump
+    const rail = AKHIL_RAIL[s[0]];
+    if (rail && apTaskH) {
+      body.classList.add('rail-fade');
+      setTimeout(() => {
+        apTaskH.textContent    = rail.h;
+        apTaskBody.textContent = rail.b;
+        apStatus.textContent   = rail.st;
+        body.classList.remove('rail-fade');
+      }, 200);
+    }
+    body.classList.remove('phase-plan','phase-draft','phase-review','phase-publish','phase-reader');
+    body.classList.add('phase-' + s[2].toLowerCase());
+    // Phase chip morph
+    phaseEl.className = 'phase ' + (PHASE_CLASS[s[2]] || '');
+    phaseEl.textContent = s[2];
+    chainEl.textContent = s[3];
+    pipEl.textContent = s[4];
+    statusChainEl.textContent = s[3];
+    stageNameEl.textContent = s[6];
+    phaseCrumbEl.textContent = s[7];
+    // Phase indicator color in topbar
+    const colorMap = { PLAN: 'var(--accent)', DRAFT: 'var(--vishal)', REVIEW: 'var(--warn)', PUBLISH: 'var(--accent)', READER: 'var(--akhil)' };
+    phaseIndicatorEl.innerHTML = 'phase · <b style="color:' + colorMap[s[2]] + '">' + s[2] + '</b>';
+    // Ribbon: mark earlier as done, current as active
+    const currentIdx = RIBBON_ORDER.indexOf(s[5]);
+    ribbonSteps.forEach((el, i) => {
+      el.classList.remove('active', 'done');
+      if (i < currentIdx) el.classList.add('done');
+      else if (i === currentIdx) el.classList.add('active');
+    });
+  }
+
+  // ---- Form typing -------------------------------------------------------
+  function typeInto(el, text, speed) {
+    let i = 0;
+    el.textContent = '';
+    el.classList.add('typing');
+    const tick = () => {
+      if (i < text.length) {
+        el.textContent += text[i++];
+        setTimeout(tick, speed);
+      } else {
+        el.classList.remove('typing');
+      }
+    };
+    tick();
+  }
+  function startFormTyping() {
+    setTimeout(() => typeInto(document.getElementById('bf1'), 'Meta-harnesses: a series', 26), 100);
+    setTimeout(() => typeInto(document.getElementById('bf2'), 'Akhil R', 32), 1100);
+    setTimeout(() => typeInto(document.getElementById('bf3'), 'AI engineers and builders', 22), 1900);
+    setTimeout(() => typeInto(document.getElementById('bf4'), 'doclayer.live + reader-harness', 19), 2900);
+  }
+
+  // ---- Word count ticker -------------------------------------------------
+  const wcWords = document.getElementById('wc-words');
+  const wcDraft = document.getElementById('wc-draft');
+  const wcTime = document.getElementById('wc-time');
+  const wcMilestones = [
+    { at: 55.5, w: 0,    d: 0, t: 'just now' },
+    { at: 61.0, w: 142,  d: 1, t: 'a moment ago' },
+    { at: 63.5, w: 842,  d: 1, t: '2 min ago' },
+    { at: 66.5, w: 1650, d: 1, t: '5 min ago' },
+    { at: 70.0, w: 2400, d: 2, t: '12 min ago' },
+    { at: 72.0, w: 2840, d: 2, t: '14 min ago' },
+    { at: 80.5, w: 2840, d: 3, t: '20 min ago' },
+    { at: 86.5, w: 2840, d: 'final', t: 'frozen' },
+  ];
+  function updateWordCount(elapsed) {
+    let m = wcMilestones[0];
+    for (const x of wcMilestones) { if (elapsed >= x.at) m = x; }
+    wcWords.textContent = m.w.toLocaleString();
+    wcDraft.textContent = m.d;
+    wcTime.textContent = m.t;
+  }
+
+  // ---- Main loop ---------------------------------------------------------
+  let startTime = performance.now();
+  let formStarted = false;
+
+  function tick() {
+    const elapsed = (performance.now() - startTime) / 1000;
+    const cycleT = elapsed % (TOTAL + REST);
+
+    // Update timer (clamped to TOTAL during rest)
+    const display = Math.min(cycleT, TOTAL);
+    const mm = String(Math.floor(display / 60)).padStart(2, '0');
+    const ss = String(Math.floor(display % 60)).padStart(2, '0');
+    elapsedEl.textContent = mm + ':' + ss;
+
+    // Wrap fade: during the final 1.2s of REST, fade the stage out so the
+    // jump back to s0 doesn't snap. Clear it ~200ms into the new cycle.
+    const inWrapFade = cycleT > (TOTAL + REST - 1.2) || cycleT < 0.2;
+    body.classList.toggle('wrap-fade', inWrapFade);
+
+    // Pick stage
+    let stage = STAGES[0];
+    for (const s of STAGES) { if (cycleT >= s[1]) stage = s; }
+
+    if (body.getAttribute('data-stage') !== stage[0]) {
+      applyStage(stage);
+    }
+
+    // Trigger form typing on first entry to s1
+    if (stage[0] === 's1' && !formStarted) {
+      formStarted = true;
+      startFormTyping();
+    }
+    // Reset on loop restart
+    if (cycleT < 0.1 && formStarted) {
+      formStarted = false;
+      ['bf1','bf2','bf3','bf4'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ''; });
+    }
+
+    updateWordCount(cycleT);
+
+    requestAnimationFrame(tick);
+  }
+
+  // Honor reduced motion: lock to final state
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) {
+    applyStage(STAGES[STAGES.length - 1]);
+    elapsedEl.textContent = '02:00';
+    wcWords.textContent = '2,840';
+    wcDraft.textContent = 'final';
+    wcTime.textContent = 'frozen';
+  } else {
+    applyStage(STAGES[0]);
+    requestAnimationFrame(tick);
+  }
+</script>
+<script>
+  /* ---------- Reusable typewriter engine (shared across mocks) ---------- */
+  (function () {
+    if (window.__twEngine) return; window.__twEngine = true;
+    var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function rng(a, b) { return a + Math.random() * (b - a); }
+    function charDelay(ch) {
+      var d = rng(35, 75);
+      if (ch === '.' || ch === '?' || ch === '!') d += rng(200, 450);
+      else if (ch === ',' || ch === ';' || ch === ':') d += rng(150, 280);
+      else if (ch === '\n' || ch === '—') d += rng(300, 500);
+      else if (ch === ' ') {
+        if (Math.random() < 0.15) d += rng(80, 150);
+        if (Math.random() < 0.02) d += rng(600, 900);
+      }
+      return d;
+    }
+    function mount(el) {
+      var text = el.getAttribute('data-tw-text') || el.textContent || '';
+      el.setAttribute('data-tw-text', text);
+      var startDelay = parseInt(el.getAttribute('data-tw-delay') || '0', 10);
+      var loopMs = parseInt(el.getAttribute('data-tw-loop') || '0', 10);
+      var speedMul = parseFloat(el.getAttribute('data-tw-speed') || '1');
+      if (reduced) { el.textContent = text; el.classList.add('tw-done'); return; }
+      el.textContent = '';
+      function run() {
+        el.textContent = '';
+        el.classList.remove('tw-done');
+        el.classList.add('tw-typing');
+        var i = 0;
+        function step() {
+          if (i >= text.length) {
+            el.classList.remove('tw-typing');
+            el.classList.add('tw-done');
+            try { el.dispatchEvent(new CustomEvent('tw:done', { bubbles: true })); } catch (e) {}
+            return;
+          }
+          var ch = text.charAt(i);
+          el.textContent += ch;
+          i++;
+          setTimeout(step, charDelay(ch) * speedMul);
+        }
+        step();
+      }
+      setTimeout(function tick() {
+        run();
+        if (loopMs > 0) setTimeout(tick, loopMs);
+      }, startDelay);
+    }
+    function init() {
+      document.querySelectorAll('[data-typewriter]').forEach(mount);
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  })();
+</script>
+
+<button class="guide-btn" id="guideBtn">guide</button>
+<div class="scenario-guide-scrim" id="guideScrim"></div>
+<aside class="scenario-guide" id="guidePanel" aria-hidden="true">
+  <div class="sg-head">
+    <div class="sg-title">guide &middot; <b>scenario 00</b></div>
+    <button class="sg-close" id="guideClose" aria-label="close">&times;</button>
+  </div>
+  <div class="sg-body">
+    <p class="sg-tagline">The whole lifecycle in one continuous reel, ~2 minutes end-to-end.</p>
+    <div class="sg-beat"><span class="sg-t">0&ndash;10s &middot; trajectory proposal</span><p>The architect drafts a 4-article series. Atoms &mdash; title, contributors, audience, deploy target &mdash; snap into a manifest. Watch the harness-strip light up as scope locks.</p></div>
+    <div class="sg-beat"><span class="sg-t">10&ndash;28s &middot; distribution into two work-windows</span><p>The trajectory fans out into per-author lanes. Vishal&rsquo;s window and Akhil&rsquo;s window appear side-by-side &mdash; each structurally different, authored from each author&rsquo;s prior.</p></div>
+    <div class="sg-beat"><span class="sg-t">28&ndash;55s &middot; parallel drafting</span><p>Both writers type live. Three AI agents (research, adversarial, visual) fire from the orchestration rail into each lane. Inline augments surface in prose &mdash; citation badges, claim flags, diagrams.</p></div>
+    <div class="sg-beat"><span class="sg-t">55&ndash;80s &middot; cross-collab handoff</span><p>Vishal finishes a section. The architect packs it as a review packet and dispatches it across the gutter. Akhil&rsquo;s harness reshapes on receive &mdash; outline collapses, review rail expands.</p></div>
+    <div class="sg-beat"><span class="sg-t">80&ndash;95s &middot; single-article lifecycle</span><p>The reel zooms into one article shipping end-to-end: plan &rarr; draft &rarr; review &rarr; publish. The lifecycle ribbon advances chip-by-chip along the top.</p></div>
+    <div class="sg-beat"><span class="sg-t">95&ndash;110s &middot; publish</span><p>One button. Build sequence streams: pack atoms &rarr; render manifest &rarr; emit reader-harness shell &rarr; deploy &rarr; warm CDN. Build target is doclayer.live.</p></div>
+    <div class="sg-beat"><span class="sg-t">110&ndash;120s &middot; reader-harness goes live</span><p>Readers with different priors arrive. The same atoms re-bind into structurally different pages. The doc has become the reader&rsquo;s harness.</p></div>
+    <div class="sg-proof"><span class="lbl">what this proves</span>doclayer is one continuous mechanism, not five disjoint apps. The same grammar arranges work, surface, and reader binding.</div>
+  </div>
+  <div class="sg-foot"><a href="guide.html">full walkthrough</a><span>00 / flow</span></div>
+</aside>
+<script src="guide.js"></script>
+</body>
+</html>

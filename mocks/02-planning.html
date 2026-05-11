@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>doclayer — Scenario 02: Planning</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* Two-up planning: V | gutter | A — same outline & chain, different harness per prior. */
+  :root {
+    --ease: cubic-bezier(.2,.8,.2,1);
+    --col-gutter: 8px;
+    /* Cursor waypoints — populated by JS from per-column bounding rects. */
+    --vc-x0: 40px;  --vc-y0: 30px;
+    --vc-x1: 160px; --vc-y1: 32px;
+    --vc-x2: 40px;  --vc-y2: 90px;
+    --vc-x7: 40px;  --vc-y7: 270px;
+    --vc-x8: 220px; --vc-y8: 274px;
+    --vc-x9: 320px; --vc-y9: 274px;
+
+    --ac-x0: 40px;  --ac-y0: 30px;
+    --ac-x1: 200px; --ac-y1: 32px;
+    --ac-x3: 190px; --ac-y3: 110px;
+    --ac-x4: 40px;  --ac-y4: 200px;
+    --ac-x5: 180px; --ac-y5: 210px;
+  }
+
+  .app { grid-template-rows: var(--row-topbar) var(--row-harness) 1fr var(--row-status); position: relative; }
+
+  /* ---------- Cursors ---------- */
+  .cursor-vishal, .cursor-akhil {
+    position: absolute;
+    z-index: 20;
+    pointer-events: none;
+    will-change: transform;
+  }
+  .cursor-vishal .dot, .cursor-akhil .dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    display: inline-block;
+    vertical-align: top;
+  }
+  .cursor-vishal .dot { background: var(--vishal); box-shadow: 0 0 10px var(--vishal); }
+  .cursor-akhil .dot  { background: var(--akhil);  box-shadow: 0 0 10px var(--akhil); }
+  .cursor-vishal .label, .cursor-akhil .label {
+    color: #fff;
+    font-family: var(--sans);
+    font-size: 9px;
+    font-weight: 600;
+    padding: 2px 5px;
+    border-radius: 3px;
+    margin-left: 8px;
+    margin-top: -2px;
+    display: inline-block;
+    vertical-align: top;
+    white-space: nowrap;
+  }
+  .cursor-vishal .label { background: var(--vishal); }
+  .cursor-akhil  .label { background: var(--akhil);  }
+
+  /* Cursors live inside their own column-editor; waypoints resolved per-element by JS.
+     14s master cycle: reorder 3-7s · cursor 7-10s · tension 10-13s · rest 13-14s. */
+  #vishal-cursor {
+    position: absolute;
+    left: 0; top: 0;
+    transform: translate(var(--vc-x0), var(--vc-y0));
+    animation: vishalPath 14s var(--ease) infinite;
+  }
+  /* Vishal's path: holds during reorder, drifts across editor typing an evidence-note. */
+  @keyframes vishalPath {
+    0%   { transform: translate(var(--vc-x0), var(--vc-y0)); }
+    20%  { transform: translate(var(--vc-x1), var(--vc-y1)); }
+    50%  { transform: translate(var(--vc-x2), var(--vc-y2)); }
+    60%  { transform: translate(var(--vc-x7), var(--vc-y7)); }
+    66%  { transform: translate(var(--vc-x8), var(--vc-y8)); }
+    72%  { transform: translate(var(--vc-x9), var(--vc-y9)); }
+    85%  { transform: translate(var(--vc-x9), var(--vc-y9)); }
+    100% { transform: translate(var(--vc-x0), var(--vc-y0)); }
+  }
+
+  /* Akhil's path: drifts to outline header, then leftward toward tension rail. */
+  #akhil-cursor {
+    position: absolute;
+    left: 0; top: 0;
+    transform: translate(var(--ac-x0), var(--ac-y0));
+    animation: akhilPath 14s var(--ease) infinite;
+  }
+  @keyframes akhilPath {
+    0%   { transform: translate(var(--ac-x0), var(--ac-y0)); }
+    20%  { transform: translate(var(--ac-x1), var(--ac-y1)); }
+    50%  { transform: translate(var(--ac-x3), var(--ac-y3)); }
+    65%  { transform: translate(var(--ac-x4), var(--ac-y4)); }
+    78%  { transform: translate(var(--ac-x5), var(--ac-y5)); }
+    90%  { transform: translate(var(--ac-x5), var(--ac-y5)); }
+    100% { transform: translate(var(--ac-x0), var(--ac-y0)); }
+  }
+
+  /* ---------- Editor micro-events ---------- */
+  .editor { position: relative; }
+  .micro-bubble {
+    position: absolute;
+    font-family: var(--code);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(0) scale(0.8);
+    z-index: 15;
+    letter-spacing: 0.02em;
+  }
+  .micro-bubble.vishal {
+    background: #6ba0ff22;
+    color: var(--vishal);
+    border: 1px solid #6ba0ff55;
+  }
+  .micro-bubble.akhil {
+    background: #ff8aa822;
+    color: var(--akhil);
+    border: 1px solid #ff8aa855;
+  }
+  .micro-bubble.b1 { left: 240px; top: 270px; animation: bubblePop 14s var(--ease) infinite; animation-delay: 7.5s; }
+  .micro-bubble.b2 { left: 200px; top: 196px; animation: bubblePop 14s var(--ease) infinite; animation-delay: 10.6s; }
+  @keyframes bubblePop {
+    0%, 50%  { opacity: 0; transform: translateY(4px) scale(0.8); }
+    56%      { opacity: 1; transform: translateY(-4px) scale(1); }
+    70%      { opacity: 1; transform: translateY(-10px) scale(1); }
+    80%      { opacity: 0; transform: translateY(-18px) scale(0.95); }
+    100%     { opacity: 0; transform: translateY(-18px) scale(0.95); }
+  }
+
+  .outline { position: relative; }
+  .outline li {
+    transition: transform 600ms var(--ease), background 220ms var(--ease), box-shadow 220ms var(--ease);
+  }
+
+  /* ---------- Evidence card resolution ---------- */
+  .new-evidence {
+    animation: evidenceFadeIn 14s var(--ease) infinite;
+    animation-delay: 0s;
+    overflow: hidden;
+  }
+  @keyframes evidenceFadeIn {
+    0%, 18%   { opacity: 0; transform: translateY(8px); border-color: var(--border-soft); }
+    22%       { opacity: 1; transform: translateY(0); border-color: var(--akhil); }
+    36%       { border-color: var(--akhil); }
+    44%       { border-color: var(--accent); }
+    60%       { border-color: var(--border-soft); }
+    100%      { opacity: 1; transform: translateY(0); border-color: var(--border-soft); }
+  }
+  /* Cross-fade between scraping and resolved states. */
+  .evidence-state { position: relative; }
+  .evidence-state .scraping,
+  .evidence-state .resolved {
+    transition: opacity 600ms var(--ease);
+  }
+  .evidence-state .scraping {
+    animation: scrapingFade 14s var(--ease) infinite;
+  }
+  .evidence-state .resolved {
+    animation: resolvedFade 14s var(--ease) infinite;
+    color: var(--text);
+  }
+  @keyframes scrapingFade {
+    0%, 38%   { opacity: 1; }
+    44%, 100% { opacity: 0; pointer-events: none; }
+  }
+  @keyframes resolvedFade {
+    0%, 38%   { opacity: 0; }
+    44%, 100% { opacity: 1; }
+  }
+  .evidence-state .resolved-block { display: block; }
+  .scraping-dots::after {
+    content: '';
+    animation: scrapingDots 1.4s steps(4, end) infinite;
+  }
+  @keyframes scrapingDots {
+    0%   { content: ''; }
+    25%  { content: '.'; }
+    50%  { content: '..'; }
+    75%  { content: '...'; }
+    100% { content: ''; }
+  }
+
+  /* FAISS counter — ticks up as evidence resolves. */
+  .faiss-counter {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-left: auto;
+  }
+  .faiss-counter b { color: var(--accent-2); font-weight: 500; min-width: 26px; text-align: right; display: inline-block; }
+  .faiss-counter b::before {
+    content: '142';
+    animation: faissTick 14s steps(1, end) infinite;
+  }
+  @keyframes faissTick {
+    0%, 35%  { content: '142'; }
+    42%      { content: '143'; }
+    48%      { content: '144'; }
+    56%      { content: '146'; }
+    66%      { content: '148'; }
+    100%     { content: '148'; }
+  }
+  .faiss-counter .pulse-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--accent-2);
+    box-shadow: 0 0 6px var(--accent-2);
+    opacity: 0.6;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+
+  /* ---------- Tension resolution ---------- */
+  .tensions-stack { position: relative; }
+  .tension { transition: transform 600ms var(--ease); }
+  .tension .check {
+    display: inline-flex;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #0a1408;
+    font-size: 9px;
+    font-weight: 700;
+    align-items: center;
+    justify-content: center;
+    margin-right: 6px;
+    opacity: 0;
+    transform: scale(0.6);
+    transition: opacity 300ms var(--ease), transform 300ms var(--ease);
+  }
+  .tension.resolving {
+    animation: tensionResolve 14s var(--ease) infinite;
+    border-color: #95e35d33 !important;
+    background: linear-gradient(180deg, #14180e 0%, var(--panel-2) 100%) !important;
+    transform-origin: top left;
+  }
+  .tension.resolving .head {
+    color: var(--accent) !important;
+  }
+  .tension.resolving .head-text { font-size: 0; line-height: inherit; }
+  .tension.resolving .head-text::after {
+    content: 'Resolving';
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    animation: tensionHead 14s steps(1, end) infinite;
+  }
+  .tension.resolving .body {
+    animation: tensionBodyResolve 14s var(--ease) infinite;
+  }
+  .tension.resolving .check {
+    animation: checkPop 14s var(--ease) infinite;
+  }
+  /* In-place resolution: card dims + body strikes through. Keyframes
+     defined in the two-up section below (retimed for 10-13s window). */
+  .resolved-caption {
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 6px;
+    padding-left: 4px;
+    opacity: 0;
+    animation: captionFade 14s var(--ease) infinite;
+  }
+
+  /* ---------- citation-card (atom from grammar) ---------- */
+  .citation-card {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: linear-gradient(180deg, #0d1408 0%, var(--panel-2) 100%);
+    border: 1px solid #95e35d33;
+    border-left: 2px solid var(--accent);
+    border-radius: var(--r);
+    font-family: var(--serif);
+    font-size: 12px;
+    font-style: italic;
+    color: var(--text-2);
+    line-height: 1.55;
+    position: relative;
+  }
+  .citation-card .cite-mark {
+    position: absolute;
+    top: -7px; left: 10px;
+    font-family: var(--code);
+    font-size: 9px;
+    color: var(--accent);
+    background: var(--panel);
+    padding: 1px 7px;
+    border: 1px solid #95e35d44;
+    border-radius: 999px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-style: normal;
+  }
+  .citation-card .cite-foot {
+    margin-top: 6px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    font-style: normal;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+    display: flex;
+    gap: 8px;
+  }
+  .citation-card .cite-foot .src { color: var(--accent-2); }
+
+  /* ---------- pinned-by badge (B-axis pin affordance) ---------- */
+  .pinned-by {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+    padding: 1px 7px 1px 6px;
+    border-radius: 999px;
+    background: #6ba0ff22;
+    border: 1px solid #6ba0ff55;
+    font-family: var(--code);
+    font-size: 9px;
+    color: var(--vishal);
+    letter-spacing: 0.04em;
+    text-transform: lowercase;
+  }
+  .pinned-by::before {
+    content: '';
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--vishal);
+    box-shadow: 0 0 5px var(--vishal);
+  }
+
+  /* ---------- graph-delta inspector (chain runtime tell) ---------- */
+  .graph-delta {
+    margin-left: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+  }
+  .graph-delta .gd-label { color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.08em; font-size: 9px; }
+  .graph-delta .gd-add { color: var(--accent); }
+  .graph-delta .gd-rm  { color: var(--warn); }
+
+  /* harness-strip overflow guard with graph-delta in the row. */
+  .harness-strip { overflow: hidden; white-space: nowrap; min-width: 0; }
+  .harness-strip > * { flex-shrink: 0; }
+  .harness-strip .pip { margin-left: auto; padding-left: 8px; }
+  @media (max-width: 1380px) {
+    .lifecycle-ribbon { margin-left: 10px; }
+    .lifecycle-ribbon .lcr-num { display: none; }
+    .lifecycle-ribbon .lcr-line { width: 10px; }
+  }
+  @media (max-width: 1220px) {
+    .graph-delta .gd-label { display: none; }
+    .graph-delta { margin-left: 8px; }
+  }
+
+  .advance-pill { right: 16px; bottom: 56px; }
+
+  /* Live ticker on graph-delta numbers. */
+  .graph-delta .gd-add, .graph-delta .gd-rm { position: relative; transition: color 240ms ease; }
+  .graph-delta .gd-add::after {
+    content: '+4 nodes';
+    animation: gdAddTick 14s steps(1, end) infinite, gdFlash 14s ease-in-out infinite;
+  }
+  .graph-delta .gd-rm::after {
+    content: '-1';
+    animation: gdRmTick 14s steps(1, end) infinite;
+  }
+  @keyframes gdAddTick {
+    0%, 20%  { content: '+4 nodes'; }
+    24%, 42% { content: '+5 nodes'; }
+    46%, 64% { content: '+7 nodes'; }
+    68%, 86% { content: '+8 nodes'; }
+    90%, 100%{ content: '+4 nodes'; }
+  }
+  @keyframes gdRmTick {
+    0%, 42%  { content: '-1'; }
+    46%, 64% { content: '-2'; }
+    68%, 100%{ content: '-2'; }
+  }
+  @keyframes gdFlash {
+    0%, 22%, 44%, 66%, 88%, 100% { text-shadow: none; }
+    24%, 46%, 68% { text-shadow: 0 0 6px var(--accent); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+    #vishal-cursor { transform: translate(var(--vc-x0), var(--vc-y0)) !important; }
+    #akhil-cursor  { transform: translate(var(--ac-x0), var(--ac-y0)) !important; }
+    .micro-bubble { display: none; }
+    .outline li.dragged, .outline li.shift-up { transform: none !important; }
+    .new-evidence { opacity: 1; }
+    .evidence-state .scraping { opacity: 0; }
+    .evidence-state .resolved { opacity: 1; position: static !important; }
+    .tension.resolving { opacity: 1; transform: none; }
+    .tension.resolving .check { opacity: 1; transform: scale(1); }
+    .tension.resolving .head-text::after { content: 'Resolved'; }
+    .resolved-caption { opacity: 1; }
+    .graph-delta .gd-add::after { content: '+4 nodes' !important; }
+    .graph-delta .gd-rm::after  { content: '-1' !important; }
+  }
+
+  .framing-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 14px 6px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    background: var(--panel);
+    border-bottom: 1px solid var(--border-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .framing-note .fn-dim { color: var(--text-muted); opacity: 0.55; }
+  .framing-note a {
+    color: var(--accent-2);
+    text-decoration: none;
+    border-bottom: 1px dotted currentColor;
+  }
+  .framing-note a:hover { opacity: 0.85; }
+
+  /* ---------- Two-up grid: V column | gutter | A column ---------- */
+  .workspace-twoup {
+    display: grid;
+    grid-template-columns: 1fr var(--col-gutter) 1fr;
+    height: 100%;
+    min-height: 0;
+    padding: 10px 12px;
+    gap: 0;
+    overflow: hidden;
+  }
+  /* Narrow viewports: shrink rails (never collapse two-up). */
+  @media (max-width: 1380px) {
+    .plan-shell.vishal .shell-body { grid-template-columns: 1fr 160px; }
+    .plan-shell.akhil  .shell-body { grid-template-columns: 160px 1fr; }
+    .workspace-twoup { padding: 8px 8px; }
+  }
+  @media (max-width: 1180px) {
+    .plan-shell.vishal .shell-body { grid-template-columns: 1fr 140px; }
+    .plan-shell.akhil  .shell-body { grid-template-columns: 140px 1fr; }
+    /* Tighten internal padding so the editor still reads */
+    .plan-pane { padding: 12px 14px; }
+    .plan-shell .shell-head { padding: 8px 10px; gap: 6px; }
+  }
+
+  /* Shared outline tree above both columns — same items, same drag-reorder. */
+  .shared-outline-bar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: stretch;
+    gap: 12px;
+    padding: 8px 10px 10px;
+    margin-bottom: 8px;
+    background: linear-gradient(180deg, var(--panel) 0%, var(--bg) 100%);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r);
+    position: relative;
+  }
+  .shared-outline-bar .so-label {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px 10px 4px 4px;
+    border-right: 1px solid var(--border-soft);
+    min-width: 130px;
+  }
+  .shared-outline-bar .so-label .ttl {
+    font-family: var(--code);
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .shared-outline-bar .so-label .sub {
+    font-family: var(--code);
+    font-size: 9px;
+    color: var(--accent-2);
+    letter-spacing: 0.04em;
+  }
+  .shared-outline-bar .so-label .pinned-by {
+    margin-left: 0;
+    align-self: flex-start;
+  }
+  .shared-outline-bar .outline {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 4px;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+    overflow: hidden;
+    padding-bottom: 0;
+  }
+  .shared-outline-bar .outline li {
+    list-style: none;
+    padding: 6px 8px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 5px;
+    font-size: 10.5px;
+    color: var(--text-2);
+    line-height: 1.3;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .shared-outline-bar .outline li .num {
+    font-family: var(--code);
+    font-size: 9px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .shared-outline-bar .outline li.active {
+    background: var(--accent-soft);
+    border-color: #95e35d44;
+    color: var(--text);
+  }
+  .shared-outline-bar .outline li.nested {
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  /* Per-side planning shell */
+  .plan-shell {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+  }
+  .plan-shell.vishal { box-shadow: inset 0 0 0 1px #6ba0ff14; }
+  .plan-shell.akhil  { box-shadow: inset 0 0 0 1px #ff8aa814; }
+
+  .plan-shell .shell-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--panel);
+    flex-shrink: 0;
+  }
+  .plan-shell.vishal .shell-head { background: linear-gradient(180deg, #0e1218 0%, var(--panel) 100%); }
+  .plan-shell.akhil  .shell-head { background: linear-gradient(180deg, #181014 0%, var(--panel) 100%); }
+  .plan-shell .shell-head .avatar {
+    width: 22px; height: 22px;
+    font-size: 11px;
+    border: 1px solid var(--border);
+  }
+  .plan-shell .shell-head .who {
+    font-family: var(--sans);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .plan-shell.vishal .shell-head .who { color: var(--vishal); }
+  .plan-shell.akhil  .shell-head .who { color: var(--akhil); }
+  .plan-shell .shell-head .prior-pill-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    letter-spacing: 0.04em;
+    text-transform: lowercase;
+  }
+  .plan-shell .shell-head .prior-pill-tag::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .plan-shell.vishal .shell-head .prior-pill-tag {
+    background: #6ba0ff1a;
+    border: 1px solid #6ba0ff44;
+    color: var(--vishal);
+  }
+  .plan-shell.akhil .shell-head .prior-pill-tag {
+    background: #ff8aa81a;
+    border: 1px solid #ff8aa844;
+    color: var(--akhil);
+  }
+  .plan-shell .shell-head .layout-tag {
+    margin-left: auto;
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+  }
+  .plan-shell .shell-head .layout-tag b { font-weight: 500; }
+  .plan-shell.vishal .shell-head .layout-tag b { color: var(--vishal); }
+  .plan-shell.akhil  .shell-head .layout-tag b { color: var(--akhil); }
+
+  /* Vishal: editor + evidence rail right. */
+  .plan-shell.vishal .shell-body {
+    display: grid;
+    grid-template-columns: 1fr 200px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+  /* Akhil: tension rail left + editor. */
+  .plan-shell.akhil .shell-body {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .plan-pane {
+    background: var(--panel);
+    overflow-y: auto;
+    min-height: 0;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .plan-pane.editor-pane {
+    background: var(--bg);
+    padding: 18px 22px 14px;
+    font-family: var(--serif);
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--text);
+    position: relative;
+  }
+  .plan-shell.vishal .plan-pane.evidence-pane { border-left: 1px solid var(--border-soft); }
+  .plan-shell.akhil  .plan-pane.tension-pane  { border-right: 1px solid var(--border-soft); }
+
+  .plan-pane .sec {
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 2px 0 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .plan-pane .sec .pinned-by {
+    margin-left: auto;
+  }
+
+  /* Editor headings (narrower than before) */
+  .plan-pane.editor-pane h1 {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 2px;
+  }
+  .plan-pane.editor-pane .subtitle {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-bottom: 14px;
+  }
+  .plan-pane.editor-pane h2 {
+    font-size: 13.5px;
+    font-weight: 600;
+    margin: 14px 0 6px;
+    letter-spacing: -0.01em;
+  }
+  .plan-pane.editor-pane p { margin: 0 0 10px; }
+
+  /* Vishal's pending evidence-flavored note (will type during 7-10s) */
+  .vishal-typed {
+    display: inline-block;
+    overflow: hidden;
+    white-space: nowrap;
+    vertical-align: bottom;
+    width: 0;
+    animation: vTypeSeg 14s steps(36, end) infinite;
+  }
+  .vishal-typed.s1 { --w: 22ch; }
+  @keyframes vTypeSeg {
+    0%, 50%   { width: 0; }
+    56%       { width: 10ch; }
+    72%       { width: var(--w); }
+    90%       { width: var(--w); }
+    96%, 100% { width: 0; }
+  }
+  .vishal-caret {
+    display: inline-block;
+    width: 2px;
+    height: 14px;
+    background: var(--vishal);
+    vertical-align: text-bottom;
+    margin-left: 1px;
+    animation: blink 1s steps(1) infinite;
+  }
+
+  /* Akhil's reading-indicator pill (he's on §5 evals) */
+  .reading-ind {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-family: var(--code);
+    font-size: 9px;
+    color: var(--akhil);
+    background: #ff8aa814;
+    border: 1px solid #ff8aa844;
+    padding: 2px 7px;
+    border-radius: 999px;
+    letter-spacing: 0.04em;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    z-index: 4;
+  }
+  .reading-ind::before {
+    content: '';
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--akhil);
+    box-shadow: 0 0 5px var(--akhil);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+
+  /* Evidence cards in Vishal's right rail (compact) */
+  .plan-pane.evidence-pane .evidence-card {
+    padding: 7px 9px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 5px;
+    font-size: 10.5px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 0;
+    transition: border-color 240ms ease;
+  }
+  .plan-pane.evidence-pane .evidence-card .src {
+    font-family: var(--code);
+    font-size: 9px;
+    color: var(--text-muted);
+  }
+  .plan-pane.evidence-pane .evidence-card .title {
+    color: var(--text);
+    font-size: 10.5px;
+    line-height: 1.35;
+  }
+  .plan-pane.evidence-pane .evidence-card .meta {
+    font-family: var(--code);
+    font-size: 9px;
+    color: var(--text-muted);
+  }
+  /* Akhil's tension resolution lights up the corresponding evidence card on V's side (10-13s). */
+  .plan-pane.evidence-pane .evidence-card.akhil-resolved {
+    animation: evLightUp 14s ease-in-out infinite;
+  }
+  @keyframes evLightUp {
+    0%, 68%   { border-color: var(--border-soft); box-shadow: none; }
+    74%       { border-color: var(--accent); box-shadow: 0 0 0 2px #95e35d33, 0 0 14px #95e35d55; }
+    86%       { border-color: var(--accent); box-shadow: 0 0 0 1px #95e35d44; }
+    93%, 100% { border-color: var(--border-soft); box-shadow: none; }
+  }
+  .ev-resolved-tag {
+    position: absolute;
+    right: 6px;
+    top: -7px;
+    font-family: var(--code);
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid #95e35d44;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    opacity: 0;
+    transform: translateY(2px) scale(0.85);
+    animation: evTagIn 14s ease-in-out infinite;
+  }
+  @keyframes evTagIn {
+    0%, 70%   { opacity: 0; transform: translateY(2px) scale(0.85); }
+    76%       { opacity: 1; transform: translateY(0) scale(1.05); }
+    93%       { opacity: 1; transform: translateY(0) scale(1); }
+    97%, 100% { opacity: 0; transform: translateY(-2px) scale(0.9); }
+  }
+
+  /* FAISS counter pinned at the top of Vishal's evidence rail */
+  .plan-pane.evidence-pane .faiss-counter {
+    margin-left: auto;
+  }
+
+  .plan-pane.tension-pane .tension {
+    padding: 8px 10px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 5px;
+    margin-bottom: 0;
+    font-size: 10.5px;
+  }
+  .plan-pane.tension-pane .tension .head {
+    color: var(--warn);
+    font-family: var(--code);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .plan-pane.tension-pane .tension .body {
+    color: var(--text-2);
+    line-height: 1.4;
+    font-family: var(--sans);
+    font-size: 11px;
+  }
+  .plan-pane.tension-pane .tension .authors {
+    font-family: var(--code);
+    font-size: 8.5px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .plan-pane.tension-pane .citation-card {
+    margin-top: 0;
+    padding: 8px 10px;
+    font-size: 10.5px;
+    line-height: 1.45;
+  }
+  .plan-pane.tension-pane .citation-card .cite-mark {
+    background: var(--panel);
+  }
+  .plan-pane.tension-pane .citation-card .cite-foot {
+    font-size: 8.5px;
+  }
+  .citation-card.akhil-pinned {
+    border-left-color: var(--akhil) !important;
+    border-color: #ff8aa844 !important;
+    background: linear-gradient(180deg, #1a1014 0%, var(--panel-2) 100%);
+  }
+  .citation-card.akhil-pinned .cite-mark {
+    color: var(--akhil);
+    border-color: #ff8aa855 !important;
+  }
+
+  /* Center inter-column caption — "shared outline · shared chain · two harnesses" */
+  .twoup-gutter-caption {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    transform-origin: center;
+    font-family: var(--code);
+    font-size: 8.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    white-space: nowrap;
+    background: var(--bg);
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border-soft);
+    pointer-events: none;
+    opacity: 0.85;
+  }
+  .twoup-gutter-caption b { color: var(--accent-2); font-weight: 500; }
+  /* The actual gutter column */
+  .twoup-gutter {
+    position: relative;
+    background: linear-gradient(180deg, transparent, #95e35d11 30%, #95e35d11 70%, transparent);
+    border-left: 1px dashed var(--border-soft);
+    border-right: 1px dashed var(--border-soft);
+    min-height: 0;
+  }
+
+  /* Cross-shell toast in V's pane, lit at 10-13s alongside the evidence card. */
+  .cross-toast {
+    margin-top: auto;
+    padding: 6px 9px;
+    background: linear-gradient(90deg, #14180e 0%, var(--panel-2) 100%);
+    border: 1px solid #95e35d33;
+    border-left: 2px solid var(--accent);
+    border-radius: 5px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--text-2);
+    letter-spacing: 0.02em;
+    line-height: 1.4;
+    opacity: 0;
+    transform: translateY(4px);
+    animation: crossToast 14s ease-in-out infinite;
+  }
+  .cross-toast b { color: var(--akhil); font-weight: 500; }
+  .cross-toast .arr { color: var(--accent); }
+  @keyframes crossToast {
+    0%, 68%   { opacity: 0; transform: translateY(4px); }
+    74%       { opacity: 1; transform: translateY(0); }
+    93%       { opacity: 1; transform: translateY(0); }
+    97%, 100% { opacity: 0; transform: translateY(-2px); }
+  }
+
+  /* Per-column micro-density indicator on Akhil's side (he's claim-first) */
+  .density-mini-akhil {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 9px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 5px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--text-muted);
+  }
+  .density-mini-akhil .bar {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .density-mini-akhil .bar .fill {
+    height: 100%;
+    background: var(--accent);
+    width: 72%;
+    border-radius: 2px;
+  }
+  .density-mini-akhil .num {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Per-side outline hover: V on §3, A on §5 (50-72% of cycle). */
+  .shared-outline-bar .outline li.hover-v {
+    animation: hoverPulseV 14s ease-in-out infinite;
+  }
+  .shared-outline-bar .outline li.hover-a {
+    animation: hoverPulseA 14s ease-in-out infinite;
+  }
+  @keyframes hoverPulseV {
+    0%, 48%   { background: var(--panel-2); box-shadow: none; }
+    55%       { background: #6ba0ff22; box-shadow: inset 0 0 0 1px #6ba0ff55; }
+    72%       { background: #6ba0ff22; box-shadow: inset 0 0 0 1px #6ba0ff55; }
+    80%, 100% { background: var(--panel-2); box-shadow: none; }
+  }
+  @keyframes hoverPulseA {
+    0%, 48%   { background: var(--panel-2); box-shadow: none; }
+    55%       { background: #ff8aa822; box-shadow: inset 0 0 0 1px #ff8aa855; }
+    72%       { background: #ff8aa822; box-shadow: inset 0 0 0 1px #ff8aa855; }
+    80%, 100% { background: var(--panel-2); box-shadow: none; }
+  }
+
+  /* Horizontal grid reorder: just a row pulse (background+outline) — no Y translate. */
+  .shared-outline-bar .outline li.dragged,
+  .shared-outline-bar .outline li.shift-up {
+    animation-name: outlineReorderPulse;
+    animation-duration: 14s;
+    animation-timing-function: var(--ease);
+    animation-iteration-count: infinite;
+    transform: none;
+  }
+  .shared-outline-bar .outline li.dragged { order: 2; }
+  .shared-outline-bar .outline li.shift-up { order: 1; }
+  @keyframes outlineReorderPulse {
+    0%, 21%   { background: var(--panel-2); box-shadow: none; border-color: var(--border-soft); }
+    28%       { background: var(--panel); box-shadow: 0 0 0 1px var(--accent), 0 4px 12px #0008; border-color: var(--accent); }
+    44%       { background: var(--panel); box-shadow: 0 0 0 1px var(--accent), 0 4px 12px #0008; border-color: var(--accent); }
+    52%       { background: var(--accent-soft); box-shadow: none; border-color: #95e35d44; }
+    66%, 100% { background: var(--panel-2); box-shadow: none; border-color: var(--border-soft); }
+  }
+
+  /* Retime tension resolve to 10-13s window (71%-93% of 14s cycle) */
+  @keyframes tensionResolve {
+    0%, 70%   { opacity: 1; }
+    78%       { opacity: 0.55; }
+    93%, 100% { opacity: 0.55; }
+  }
+  @keyframes tensionBodyResolve {
+    0%, 70%   { text-decoration: none; color: inherit; }
+    78%, 100% { text-decoration: line-through; text-decoration-color: var(--text-muted); color: var(--text-muted); }
+  }
+  @keyframes tensionHead {
+    0%, 72%   { content: 'Resolving'; }
+    77%, 100% { content: 'Resolved'; }
+  }
+  @keyframes checkPop {
+    0%, 75%   { opacity: 0; transform: scale(0.6); }
+    80%       { opacity: 1; transform: scale(1.2); }
+    85%, 100% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes captionFade {
+    0%, 78%   { opacity: 0; transform: translateY(-2px); }
+    84%       { opacity: 1; transform: translateY(0); }
+    96%       { opacity: 1; }
+    100%      { opacity: 0; }
+  }
+
+  /* Reduced motion: two columns rest in their settled prior-shapes. */
+  @media (prefers-reduced-motion: reduce) {
+    .vishal-typed { width: var(--w); }
+    .vishal-caret { display: none; }
+    .ev-resolved-tag { opacity: 1; transform: none; }
+    .cross-toast { opacity: 1; transform: none; }
+    .shared-outline-bar .outline li.dragged,
+    .shared-outline-bar .outline li.shift-up { background: var(--accent-soft); box-shadow: inset 0 0 0 1px #95e35d44; }
+    .shared-outline-bar .outline li.hover-v { background: #6ba0ff22; box-shadow: inset 0 0 0 1px #6ba0ff55; }
+    .shared-outline-bar .outline li.hover-a { background: #ff8aa822; box-shadow: inset 0 0 0 1px #ff8aa855; }
+    .plan-pane.evidence-pane .evidence-card.akhil-resolved {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px #95e35d44;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span>doclayer</div>
+    <div class="crumb">/ <b>meta-harnesses</b> / planning</div>
+    <div class="right">
+      <span class="muted">scenario 02: planning</span>
+      <div class="avatar akhil" title="Akhil">A</div>
+      <div class="avatar" title="Vishal">V</div>
+    </div>
+  </div>
+
+  <div class="harness-strip">
+    <span class="phase">PLAN</span>
+    <span class="chain">chain · <b>DOC_PLAN/v1</b></span>
+    <span class="graph-delta" title="last manifest refine — graph delta merged into doc state">
+      <span class="gd-label">graph-delta</span>
+      <span class="gd-add" aria-hidden="true"></span>
+      <span style="color:var(--border);">/</span>
+      <span class="gd-rm" aria-hidden="true"></span>
+    </span>
+    <ol class="lifecycle-ribbon" aria-label="document lifecycle">
+      <li class="lcr-step done"><span class="lcr-num">01</span>Bootstrap</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step current"><span class="lcr-num">02</span>Plan</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step"><span class="lcr-num">03</span>Draft</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step"><span class="lcr-num">04</span>Review</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step"><span class="lcr-num">05</span>Publish</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step"><span class="lcr-num">06</span>Reader</li>
+    </ol>
+    <span class="pip">architect: idle</span>
+  </div>
+
+  <div class="framing-note">two-up planning view <span class="fn-dim">·</span> same outline · same chain · <a href="07-multiplayer.html">two harnesses, one per author prior →</a></div>
+
+  <div class="phase-tabs">
+    <div class="phase-tab active"><span class="step">01</span>Plan</div>
+    <div class="phase-tab"><span class="step">02</span>Draft</div>
+    <div class="phase-tab"><span class="step">03</span>Review</div>
+    <div class="phase-tab"><span class="step">04</span>Publish</div>
+  </div>
+
+  <div class="workspace workspace-twoup">
+    <!-- ============ SHARED OUTLINE TREE (top, spans both columns) ============ -->
+    <div class="shared-outline-bar">
+      <div class="so-label">
+        <span class="ttl">shared outline</span>
+        <span class="sub">drag · synced</span>
+        <span class="pinned-by" title="B-axis · pinned across both shells">pinned · vishal</span>
+      </div>
+      <ul class="outline">
+        <li class="fade-up d-1"><span class="num">1</span> What is a harness?</li>
+        <li class="fade-up d-2"><span class="num">2</span> Why scaling doesn't solve it</li>
+        <li class="fade-up d-3 active hover-v"><span class="num">3</span> Building meta-harnesses</li>
+        <li class="fade-up d-4 nested dragged"><span class="num">3.1</span> RLMs &amp; self-improvement</li>
+        <li class="fade-up d-5 nested shift-up"><span class="num">3.2</span> Genetic algorithms</li>
+        <li class="fade-up d-6 nested shift-up"><span class="num">3.3</span> Loss functions</li>
+        <li class="fade-up d-7"><span class="num">4</span> Multiplayer harnesses</li>
+        <li class="fade-up d-8 hover-a"><span class="num">5</span> Evals at every layer</li>
+      </ul>
+    </div>
+
+    <!-- ============================ VISHAL'S SHELL ============================ -->
+    <div class="plan-shell vishal slide-right">
+      <div class="shell-head">
+        <div class="avatar" title="Vishal">V</div>
+        <span class="who">Vishal</span>
+        <span class="prior-pill-tag" title="architect input — Vishal's prior">builder · concrete-first</span>
+        <span class="layout-tag">layout · <b>editor + evidence rail</b></span>
+      </div>
+      <div class="shell-body">
+        <!-- Editor (with Vishal's cursor + his typed evidence-flavored note) -->
+        <div class="plan-pane editor-pane">
+          <div class="editor" id="vishal-editor">
+            <h1 class="fade-up d-1">Meta-harnesses</h1>
+            <div class="subtitle fade-up d-2">A series, target: AI engineers and builders.</div>
+
+            <h2 class="fade-up d-3">3. Building meta-harnesses</h2>
+            <p class="fade-up d-4">Three patterns keep showing up: a graph of typed state machines, a model that authors its own web app from a grammar, and a small kernel that evolves on top of a multiplayer world.</p>
+            <p class="fade-up d-5" style="opacity: 0.9;">Each is a different bet on how to express the search space.<span class="vishal-typed s1"> RLMs feel closest here.</span><span class="vishal-caret"></span></p>
+
+            <!-- Vishal's cursor — column-local -->
+            <div id="vishal-cursor" class="cursor-vishal">
+              <span class="dot"></span><span class="label">Vishal</span>
+            </div>
+            <div class="micro-bubble vishal b1">+3 words</div>
+          </div>
+        </div>
+
+        <!-- Evidence rail (right) — Vishal's prominent panel -->
+        <div class="plan-pane evidence-pane">
+          <div class="sec">
+            evidence
+            <span class="faiss-counter" title="Sources indexed in this doc's evidence panel">
+              <span class="pulse-dot"></span><b></b>
+            </span>
+          </div>
+          <div class="evidence-card fade-up d-2">
+            <div class="src">raw.works · vishal</div>
+            <div class="title">RLMs are the new reasoning models</div>
+            <div class="meta">3 quotes pinned</div>
+          </div>
+          <div class="evidence-card fade-up d-3 akhil-resolved" style="position:relative;">
+            <span class="ev-resolved-tag">akhil resolved §3.2 ✓</span>
+            <div class="src">x.com · trq212</div>
+            <div class="title">Multiplayer harness thread</div>
+            <div class="meta">2 quotes pinned · §3.2</div>
+          </div>
+          <div class="evidence-card fade-up d-4">
+            <div class="src">youtube.com</div>
+            <div class="title">Meta-harnesses talk</div>
+            <div class="meta">transcript indexed</div>
+          </div>
+          <div class="evidence-card new-evidence evidence-state" style="min-height:48px;">
+            <div class="src" style="color:var(--akhil);font-family:var(--code);font-size:9px;">+ akhil just added</div>
+            <div class="scraping">
+              <div class="title" style="color:var(--text-muted);font-size:10.5px;">x.com/paraschopra/1834…</div>
+              <div class="meta">scraping<span class="scraping-dots"></span></div>
+            </div>
+            <div class="resolved" style="position:absolute; inset:7px 9px; display:flex; flex-direction:column; gap:3px; opacity:0;">
+              <div class="title">Recursive feedback</div>
+              <div class="meta">+6 chunks · <span style="color:var(--accent);">ready</span></div>
+            </div>
+          </div>
+
+          <!-- Cross-shell toast: lights up when Akhil resolves §3.2 tension -->
+          <div class="cross-toast"><b>akhil</b> resolved §3.2 tension <span class="arr">→</span> evidence lit</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================ SYNC GUTTER ============================ -->
+    <div class="twoup-gutter">
+      <div class="twoup-gutter-caption">shared outline · shared chain · <b>two harnesses</b></div>
+    </div>
+
+    <!-- ============================ AKHIL'S SHELL ============================ -->
+    <div class="plan-shell akhil slide-left">
+      <div class="shell-head">
+        <div class="avatar akhil" title="Akhil">A</div>
+        <span class="who">Akhil</span>
+        <span class="prior-pill-tag" title="architect input — Akhil's prior">claim-first · evals advocate</span>
+        <span class="layout-tag">layout · <b>tension rail + editor</b></span>
+      </div>
+      <div class="shell-body">
+        <!-- Tension rail (left) — Akhil's prominent panel, with citation-card -->
+        <div class="plan-pane tension-pane">
+          <div class="sec">tension tracker</div>
+          <div class="tensions-stack" style="display:flex; flex-direction:column; gap:8px;">
+            <div class="tension fade-up d-5 resolving">
+              <div class="head"><span class="check">&#10003;</span><span class="head-text">Resolving</span></div>
+              <div class="body">"Online vs offline harness — overcomplication or recursive truth?"</div>
+              <div class="authors">Akhil &#8592;&#8594; Vishal · 2 turns</div>
+              <div class="resolved-caption">resolved by Akhil's last comment</div>
+            </div>
+            <div class="tension fade-up d-6">
+              <div class="head">Open · framing</div>
+              <div class="body">Paper, Substack, or series? Akhil leans Substack-as-series; Vishal undecided.</div>
+              <div class="authors">Akhil &amp; Vishal · 0 turns</div>
+            </div>
+            <div class="tension fade-up d-7">
+              <div class="head">Open · evals</div>
+              <div class="body">Golden eval as one rubric, or recursive at every layer?</div>
+              <div class="authors">Vishal · proposed</div>
+            </div>
+          </div>
+
+          <div class="sec" style="margin-top:6px;">citation</div>
+          <div class="citation-card akhil-pinned fade-up d-3">
+            <span class="cite-mark">cite</span>
+            "the harness is the controller; scaling the policy without touching the controller leaves the harness exactly where it was."
+            <div class="cite-foot">
+              <span class="src">raw.works/posts/rlms</span>
+              <span>¶ 4</span>
+              <span style="margin-left:auto;color:var(--akhil);">pinned · akhil</span>
+            </div>
+          </div>
+
+          <div class="density-mini-akhil" title="claim-density (Akhil-only meter)">
+            <span>§3 density</span>
+            <span class="bar"><span class="fill"></span></span>
+            <span class="num">2.8</span><span style="color:var(--text-muted);">/3</span>
+          </div>
+        </div>
+
+        <!-- Editor (with Akhil's cursor) -->
+        <div class="plan-pane editor-pane">
+          <span class="reading-ind">reading §5 evals</span>
+          <div class="editor" id="akhil-editor">
+            <h1 class="fade-up d-1">Meta-harnesses</h1>
+            <div class="subtitle fade-up d-2">A series, target: AI engineers and builders.</div>
+
+            <h2 class="fade-up d-3">3. Building meta-harnesses</h2>
+            <p class="fade-up d-4">Three patterns keep showing up: a graph of typed state machines, a model that authors its own web app from a grammar, and a small kernel that evolves on top of a multiplayer world.</p>
+            <p class="fade-up d-5" style="opacity: 0.9;">Each is a different bet on how to express the search space.</p>
+
+            <!-- Akhil's cursor — column-local -->
+            <div id="akhil-cursor" class="cursor-akhil">
+              <span class="dot"></span><span class="label">Akhil</span>
+            </div>
+            <div class="micro-bubble akhil b2">scroll</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span class="live">2 authors live</span>
+    <span>phase: <b style="color:var(--accent)">plan</b></span>
+    <span>chain: <b>DOC_PLAN/v1</b></span>
+    <span>yjs: <b style="color:var(--accent-2);">synced</b></span>
+    <span style="margin-left:auto;">12 events/min · 8ms RTT</span>
+  </div>
+</div>
+
+<div class="scenario-nav">
+  <a href="01-bootstrap.html">← bootstrap</a>
+  <a href="index.html">all scenarios</a>
+  <a href="03-drafting.html">next: drafting →</a>
+</div>
+
+<a class="advance-pill" href="03-drafting.html">next: drafting →</a>
+
+<script>
+  // Calibrate per-column cursor waypoints from each editor's bounding rects.
+  (function () {
+    function clamp(x, max) { return Math.max(16, Math.min(max, x)); }
+    function rectsIn(ed) {
+      if (!ed) return null;
+      var h1 = ed.querySelector('h1');
+      var h2 = ed.querySelector('h2');
+      var ps = ed.querySelectorAll('p');
+      var p1 = ps[0], p2 = ps[1];
+      if (!h1 || !h2 || !p1) return null;
+      var er = ed.getBoundingClientRect();
+      function r(el) { var b = el.getBoundingClientRect(); return [b.left - er.left, b.top - er.top, b.width, b.height]; }
+      return { er: er, h1: r(h1), h2: r(h2), p1: r(p1), p2: p2 ? r(p2) : r(p1) };
+    }
+    function calibrate() {
+      // Vishal's editor (left column)
+      var vEd = document.getElementById('vishal-editor');
+      var vR = rectsIn(vEd);
+      if (vEd && vR) {
+        var vMax = vR.er.width - 60;
+        function vx(x) { return clamp(x, vMax) + 'px'; }
+        var H1 = vR.h1, H2 = vR.h2, P1 = vR.p1, P2 = vR.p2;
+        var vPairs = {
+          '--vc-x0': vx(H1[0] + 14),               '--vc-y0': (H1[1] + H1[3] * 0.5) + 'px',
+          '--vc-x1': vx(H1[0] + H1[2] * 0.55),     '--vc-y1': (H1[1] + H1[3] * 0.5) + 'px',
+          '--vc-x2': vx(H2[0] + H2[2] * 0.4),      '--vc-y2': (H2[1] + H2[3] * 0.5) + 'px',
+          '--vc-x7': vx(P2[0] + P2[2] * 0.3),      '--vc-y7': (P2[1] + P2[3] * 0.45) + 'px',
+          '--vc-x8': vx(P2[0] + P2[2] * 0.55),     '--vc-y8': (P2[1] + P2[3] * 0.5) + 'px',
+          '--vc-x9': vx(P2[0] + P2[2] * 0.78),     '--vc-y9': (P2[1] + P2[3] * 0.5) + 'px'
+        };
+        for (var k in vPairs) vEd.style.setProperty(k, vPairs[k]);
+      }
+      // Akhil's editor (right column)
+      var aEd = document.getElementById('akhil-editor');
+      var aR = rectsIn(aEd);
+      if (aEd && aR) {
+        var aMax = aR.er.width - 60;
+        function ax(x) { return clamp(x, aMax) + 'px'; }
+        var aH1 = aR.h1, aH2 = aR.h2, aP1 = aR.p1, aP2 = aR.p2;
+        var aPairs = {
+          '--ac-x0': ax(aH1[0] + 14),              '--ac-y0': (aH1[1] + aH1[3] * 0.5) + 'px',
+          '--ac-x1': ax(aH2[0] + 14),              '--ac-y1': (aH2[1] + aH2[3] * 0.5) + 'px',
+          '--ac-x3': ax(aP1[0] + aP1[2] * 0.5),    '--ac-y3': (aP1[1] + aP1[3] * 0.5) + 'px',
+          '--ac-x4': ax(aP1[0] + 8),               '--ac-y4': (aP2[1] + aP2[3] * 0.3) + 'px',
+          '--ac-x5': ax(aP1[0] + 4),               '--ac-y5': (aP2[1] + aP2[3] * 0.7) + 'px'
+        };
+        for (var k in aPairs) aEd.style.setProperty(k, aPairs[k]);
+      }
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', calibrate);
+    else calibrate();
+    var raf = 0;
+    window.addEventListener('resize', function () { cancelAnimationFrame(raf); raf = requestAnimationFrame(calibrate); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(calibrate).catch(function () {});
+  })();
+</script>
+
+<button class="guide-btn" id="guideBtn">guide</button>
+<div class="scenario-guide-scrim" id="guideScrim"></div>
+<aside class="scenario-guide" id="guidePanel" aria-hidden="true">
+  <div class="sg-head">
+    <div class="sg-title">guide &middot; <b>scenario 02</b></div>
+    <button class="sg-close" id="guideClose" aria-label="close">&times;</button>
+  </div>
+  <div class="sg-body">
+    <p class="sg-tagline">Two-up planning &mdash; divergent shells over a shared outline.</p>
+    <div class="sg-beat"><span class="sg-t">0&ndash;5s &middot; two-up planning</span><p>Two panes, same outline tree. Vishal&rsquo;s pane shows the evidence panel scraped from shared links; Akhil&rsquo;s pane shows a tension tracker. Different views over identical state.</p></div>
+    <div class="sg-beat"><span class="sg-t">5&ndash;10s &middot; divergent shells</span><p>Both cursors land in the outline. A section is reordered; both views update with a graph delta, not a bulk re-render. The harnesses diverged on layout but never on data.</p></div>
+    <div class="sg-beat"><span class="sg-t">10&ndash;16s &middot; shared outline reorder</span><p>Akhil disagrees on a sub-heading. The tension tracker opens a row. Resolution flows through chat inside the tension card itself &mdash; not a side channel, part of the grammar.</p></div>
+    <div class="sg-beat"><span class="sg-t">16&ndash;22s &middot; tension resolution</span><p>Tension resolves. The outline locks the section. Phase chip on the lifecycle ribbon advances toward &ldquo;draft&rdquo;.</p></div>
+    <div class="sg-proof"><span class="lbl">what this proves</span>Two harnesses can disagree on layout while sharing one document. Layout is a function of prior, not of state.</div>
+  </div>
+  <div class="sg-foot"><a href="guide.html">full walkthrough</a><span>02 / planning</span></div>
+</aside>
+<script src="guide.js"></script>
+</body>
+</html>

@@ -1,0 +1,1939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>doclayer — Scenario 09: Review loop (notify · reshape · iterate)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* 30s loop, 7 phases:
+     P1 0–33% type+AI · P2 33–43% packet+toast→A · P3 43–60% A reshapes review
+     P4 60–77% A comments · P5 77–87% notify→V · P6 87–97% V iterate · P7 settle */
+
+  :root {
+    --ease: cubic-bezier(.2,.8,.2,1);
+    --gutter: 100px;
+    --vishal-soft: #6ba0ff14;
+    --akhil-soft: #ff8aa814;
+    --research: #95e35d;
+    --visual: var(--vishal);
+    --adversarial: var(--warn);
+  }
+
+  body {
+    background: var(--bg);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ---------- Page-level frame ---------- */
+  .page {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    min-height: 100vh;
+  }
+
+  .page-header {
+    padding: 22px 32px 18px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #0d0e10 0%, var(--bg) 100%);
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  .page-header .brand {
+    font-family: var(--code);
+    font-size: 12px;
+    color: var(--text-2);
+    letter-spacing: 0.06em;
+  }
+  .page-header .brand .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
+    margin-right: 8px;
+    vertical-align: middle;
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+  .page-header .brand b { color: var(--text); font-weight: 600; }
+  .page-header .title {
+    font-family: var(--sans);
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+  .page-header .title .accent { color: var(--accent); }
+  .page-header .sub {
+    font-family: var(--code);
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+  }
+  .page-header .sub em {
+    color: var(--text-2);
+    font-style: italic;
+  }
+  .page-header .right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--code);
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .page-header .right .dual-avatars {
+    display: inline-flex;
+    align-items: center;
+  }
+  .page-header .right .dual-avatars .avatar { border: 2px solid var(--bg); }
+  .page-header .right .dual-avatars .avatar + .avatar { margin-left: -6px; }
+  .page-header .right .doc-id {
+    color: var(--text-2);
+    letter-spacing: 0.06em;
+  }
+  .page-header .right .doc-id b { color: var(--text); font-weight: 500; }
+
+  /* ---------- Stage: two viewports + sync gutter ---------- */
+  .stage {
+    display: grid;
+    grid-template-columns: 1fr var(--gutter) 1fr;
+    height: calc(100vh - 110px);
+    min-height: 720px;
+    position: relative;
+  }
+  @media (max-width: 1380px) {
+    :root { --gutter: 80px; }
+  }
+  @media (max-width: 1280px) {
+    :root { --gutter: 64px; }
+  }
+
+  /* Each side is its own complete app shell */
+  .shell {
+    display: grid;
+    grid-template-rows: var(--row-topbar) var(--row-harness) auto 1fr var(--row-status);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    min-height: 0;
+  }
+  .shell.vishal { box-shadow: inset 0 0 0 1px #6ba0ff14; }
+  .shell.akhil  { box-shadow: inset 0 0 0 1px #ff8aa814; }
+
+  .shell .topbar { border-bottom: 1px solid var(--border); background: var(--panel); }
+  .shell.vishal .topbar { background: linear-gradient(180deg, #0e1218 0%, var(--panel) 100%); }
+  .shell.akhil  .topbar { background: linear-gradient(180deg, #181014 0%, var(--panel) 100%); }
+  .shell .topbar .who-tag {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .shell.vishal .topbar .who-tag { color: var(--vishal); }
+  .shell.akhil  .topbar .who-tag { color: var(--akhil); }
+
+  .shell .harness-strip {
+    overflow: hidden;
+    white-space: nowrap;
+    min-width: 0;
+    gap: 10px;
+  }
+  .shell .harness-strip > * { flex-shrink: 0; }
+  .shell .harness-strip .pip { margin-left: auto; padding-left: 8px; }
+
+  @media (max-width: 1380px) {
+    .lifecycle-ribbon { margin-left: 8px; }
+    .lifecycle-ribbon .lcr-num { display: none; }
+    .lifecycle-ribbon .lcr-line { width: 8px; }
+    .lifecycle-ribbon .lcr-step { padding: 2px 6px; }
+  }
+  @media (max-width: 1280px) {
+    .shell .lifecycle-ribbon { display: none; }
+  }
+
+  /* Phase pip — REVIEW LOOP custom color */
+  .harness-strip .phase.loop {
+    background: linear-gradient(90deg, #6ba0ff22 0%, #ff8aa822 100%);
+    border: 1px solid #b58acc66;
+    color: #c9a4e0;
+  }
+
+  /* ---------- Per-author top sub-strip ---------- */
+  .sub-strip {
+    height: 28px;
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border-soft);
+    font-family: var(--code);
+    font-size: 10.5px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    overflow: hidden;
+    position: relative;
+  }
+  .sub-strip .layout-tag { color: var(--text-2); }
+  .sub-strip .layout-tag b { font-weight: 500; }
+  .shell.vishal .sub-strip .layout-tag b { color: var(--vishal); }
+  .shell.akhil  .sub-strip .layout-tag b { color: var(--akhil); }
+
+  /* The sub-strip caption morphs as harness reshapes. */
+  .sub-strip .layout-caption {
+    position: absolute;
+    left: 14px;
+    top: 0; bottom: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: opacity 360ms ease;
+    opacity: 0;
+  }
+  /* Akhil's three captions: drafting (default), shifted-to-review, back-to-drafting */
+  .shell.akhil .sub-strip .cap-drafting    { animation: cap_a_drafting 30s var(--ease) infinite; }
+  .shell.akhil .sub-strip .cap-review      { animation: cap_a_review   30s var(--ease) infinite; }
+  .shell.akhil .sub-strip .cap-redraft     { animation: cap_a_redraft  30s var(--ease) infinite; }
+  @keyframes cap_a_drafting {
+    0%, 43%   { opacity: 1; }
+    44%, 87%  { opacity: 0; }
+    88%, 100% { opacity: 1; }
+  }
+  @keyframes cap_a_review {
+    0%, 42%   { opacity: 0; }
+    44%, 87%  { opacity: 1; }
+    88%, 100% { opacity: 0; }
+  }
+  /* Vishal's two captions: drafting (default), iterate-mode */
+  .shell.vishal .sub-strip .cap-drafting   { animation: cap_v_drafting 30s var(--ease) infinite; }
+  .shell.vishal .sub-strip .cap-iterate    { animation: cap_v_iterate  30s var(--ease) infinite; }
+  @keyframes cap_v_drafting {
+    0%, 86%   { opacity: 1; }
+    87%, 100% { opacity: 0; }
+  }
+  @keyframes cap_v_iterate {
+    0%, 86%   { opacity: 0; }
+    88%, 100% { opacity: 1; }
+  }
+
+  /* Workspace geometry — the reshape mechanism: animate grid-template-*  */
+
+  /* ===== Vishal's workspace ===== */
+  .workspace-v {
+    display: grid;
+    grid-template-columns: 1fr 240px;
+    grid-template-rows: 1fr;
+    grid-template-areas: "ed inline";
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    transition: grid-template-columns 600ms var(--ease),
+                grid-template-rows 600ms var(--ease);
+    animation: workspaceV 30s var(--ease) infinite;
+  }
+  /* Reshape: in P6 (87-97%) bring in a left "review-feedback" rail */
+  @keyframes workspaceV {
+    0%, 86% {
+      grid-template-columns: 1fr 240px;
+      grid-template-rows: 1fr;
+    }
+    88%, 100% {
+      grid-template-columns: 200px 1fr 240px;
+      grid-template-rows: 1fr;
+    }
+  }
+
+  /* ===== Akhil's workspace — the dramatic reshape ===== */
+  .workspace-a {
+    display: grid;
+    /* Default (drafting-mode): no minimized strip; full editor + left tension rail; no review chrome */
+    grid-template-columns: 200px 1fr 0;
+    grid-template-rows: 0 1fr;
+    grid-template-areas:
+      "min  min  min"
+      "lr   ed   rev";
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    transition: grid-template-columns 600ms var(--ease),
+                grid-template-rows 600ms var(--ease);
+    animation: workspaceA 30s var(--ease) infinite;
+  }
+  /* A: drafting → review (P3-P5) → drafting */
+  @keyframes workspaceA {
+    0%, 42% {
+      grid-template-columns: 200px 1fr 0px;
+      grid-template-rows: 0px 1fr;
+    }
+    44%, 86% {
+      grid-template-columns: 220px 1fr 240px;
+      grid-template-rows: 36px 1fr;
+    }
+    88%, 100% {
+      grid-template-columns: 200px 1fr 0px;
+      grid-template-rows: 0px 1fr;
+    }
+  }
+
+  /* ---------- Akhil's minimized §1 strip (only visible in review-mode) ---------- */
+  .min-strip {
+    grid-area: min;
+    overflow: hidden;
+    background: linear-gradient(90deg, #181014 0%, var(--panel) 100%);
+    border-bottom: 1px solid #ff8aa844;
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    gap: 10px;
+    font-family: var(--code);
+    font-size: 10.5px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    opacity: 0;
+    animation: minStripCycle 30s var(--ease) infinite;
+  }
+  .min-strip .who {
+    color: var(--akhil);
+    font-weight: 500;
+  }
+  .min-strip .body { color: var(--text-2); }
+  .min-strip .resume {
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #ff8aa81a;
+    border: 1px solid #ff8aa844;
+    color: var(--akhil);
+    font-size: 9.5px;
+  }
+  @keyframes minStripCycle {
+    0%, 42%   { opacity: 0; }
+    46%, 86%  { opacity: 1; }
+    88%, 100% { opacity: 0; }
+  }
+
+  /* ---------- Akhil's left rail content ---------- */
+  .akhil-leftrail {
+    grid-area: lr;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    min-height: 0;
+    padding: 10px;
+  }
+  .akhil-leftrail .sec {
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 4px 0 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  /* In drafting-mode shows tension-tracker; in review-mode shows "suggested review areas" */
+  .akhil-leftrail .lr-drafting,
+  .akhil-leftrail .lr-review { transition: opacity 360ms ease; }
+  .akhil-leftrail .lr-drafting { animation: lrCycle_drafting 30s var(--ease) infinite; }
+  .akhil-leftrail .lr-review   { animation: lrCycle_review   30s var(--ease) infinite; }
+  @keyframes lrCycle_drafting {
+    0%, 42%   { opacity: 1; transform: none; }
+    44%, 87%  { opacity: 0; transform: translateY(-8px); }
+    88%, 100% { opacity: 1; transform: none; }
+  }
+  @keyframes lrCycle_review {
+    0%, 42%   { opacity: 0; position: absolute; visibility: hidden; }
+    43%       { opacity: 0; position: absolute; visibility: visible; }
+    46%, 86%  { opacity: 1; position: static; visibility: visible; }
+    88%, 100% { opacity: 0; position: absolute; visibility: hidden; }
+  }
+
+  /* ---------- Editor (Akhil side) — content swaps between his §1 and Vishal's §3.2 ---------- */
+  .editor-a {
+    grid-area: ed;
+    background: var(--bg);
+    padding: 24px 32px 18px;
+    font-family: var(--serif);
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--text);
+    overflow-y: auto;
+    position: relative;
+    min-height: 0;
+  }
+  .editor-a h1, .editor-v h1 {
+    font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 4px;
+  }
+  .editor-a .subtitle, .editor-v .subtitle {
+    font-size: 12px; color: var(--text-muted); font-style: italic; margin-bottom: 18px;
+  }
+  .editor-a h2, .editor-v h2 {
+    font-size: 15.5px; font-weight: 600; margin: 18px 0 8px; letter-spacing: -0.01em;
+  }
+  .editor-a p, .editor-v p { margin: 0 0 12px; }
+
+  /* Two stacked content layers in Akhil's editor: drafting §1 OR reviewing §3.2 */
+  .editor-a .layer-drafting,
+  .editor-a .layer-review {
+    transition: opacity 400ms ease;
+  }
+  .editor-a .layer-drafting { animation: layerA_drafting 30s var(--ease) infinite; }
+  .editor-a .layer-review   { animation: layerA_review   30s var(--ease) infinite; }
+  @keyframes layerA_drafting {
+    0%, 42%   { opacity: 1; position: static; }
+    44%       { opacity: 0; position: static; }
+    45%, 87%  { opacity: 0; display: none; }
+    88%, 100% { opacity: 1; display: block; position: static; }
+  }
+  @keyframes layerA_review {
+    0%, 43%   { opacity: 0; display: none; }
+    44%       { opacity: 0; display: block; }
+    46%, 86%  { opacity: 1; display: block; }
+    88%       { opacity: 0; display: block; }
+    89%, 100% { opacity: 0; display: none; }
+  }
+
+  /* ---------- Editor (Vishal side) ---------- */
+  .editor-v {
+    grid-area: ed;
+    background: var(--bg);
+    padding: 28px 56px 18px;
+    font-family: var(--serif);
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--text);
+    overflow-y: auto;
+    position: relative;
+    min-height: 0;
+  }
+
+  /* ---------- Live typing in Vishal's editor (Phase 1) — JS-driven, see engine at end of body ---------- */
+  .typed { display: inline; }
+  .typed [data-typewriter] { display: inline; white-space: normal; }
+
+  /* Editor caret (Vishal-side) — solid during P1; quiet otherwise */
+  .editor-cursor {
+    display: inline-block;
+    width: 2px; height: 16px;
+    background: var(--vishal);
+    box-shadow: 0 0 4px var(--vishal);
+    vertical-align: text-bottom;
+    margin-left: 1px;
+    animation: blink 1s steps(1) infinite, vCaret 30s ease-in-out infinite;
+  }
+  @keyframes vCaret {
+    0%, 33%    { opacity: 1; }
+    34%, 86%   { opacity: 0.3; }
+    87%, 100%  { opacity: 1; }
+  }
+  .editor-cursor.akhil-caret {
+    background: var(--akhil);
+    box-shadow: 0 0 4px var(--akhil);
+    animation: blink 1s steps(1) infinite, aCaret 30s ease-in-out infinite;
+  }
+  @keyframes aCaret {
+    0%, 33%    { opacity: 1; }
+    34%, 100%  { opacity: 0; }
+  }
+
+  /* Inline AI augmentation chips: 3 flavors (research/visual/adversarial) */
+  .ai-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 8px;
+    padding: 2px 8px 2px 7px;
+    border-radius: 999px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    letter-spacing: 0.02em;
+    vertical-align: middle;
+    opacity: 0;
+    transform: translateY(-2px) scale(0.92);
+    white-space: nowrap;
+    border: 1px solid;
+  }
+  .ai-chip::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+    flex-shrink: 0;
+  }
+  .ai-chip .arrow {
+    opacity: 0.55;
+    font-family: var(--code);
+    margin-right: 2px;
+  }
+  .ai-chip .kind {
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    opacity: 0.85;
+  }
+  .ai-chip .text {
+    color: var(--text-2);
+    font-family: var(--code);
+  }
+  .ai-chip.research {
+    color: var(--research);
+    background: #95e35d12;
+    border-color: #95e35d44;
+    animation: chipResearch 30s var(--ease) infinite;
+  }
+  .ai-chip.visual {
+    color: var(--visual);
+    background: #6ba0ff12;
+    border-color: #6ba0ff44;
+    animation: chipVisual 30s var(--ease) infinite;
+  }
+  .ai-chip.adversarial {
+    color: var(--adversarial);
+    background: #ffb86b12;
+    border-color: #ffb86b44;
+    animation: chipAdv 30s var(--ease) infinite;
+  }
+  /* Each chip: appears with glow, settles to subtle, then for "research" — transitions to inline citation. Others fade by P2. */
+  @keyframes chipResearch {
+    0%, 11%   { opacity: 0; transform: translateY(-2px) scale(0.92); }
+    14%       { opacity: 1; transform: translateY(0) scale(1.04); box-shadow: 0 0 14px #95e35d99; }
+    18%       { opacity: 1; transform: translateY(0) scale(1); box-shadow: 0 0 6px #95e35d44; }
+    26%       { opacity: 1; transform: translateY(0) scale(1.08); box-shadow: 0 0 16px #95e35dcc; }
+    /* "accepted" — chip morphs visually (handled by sibling .cite-marker appearing) and then fades */
+    30%       { opacity: 0.6; transform: translateY(0) scale(0.9); }
+    33%, 100% { opacity: 0; transform: translateY(-2px) scale(0.85); }
+  }
+  @keyframes chipVisual {
+    0%, 16%   { opacity: 0; transform: translateY(-2px) scale(0.92); }
+    19%       { opacity: 1; transform: translateY(0) scale(1.04); box-shadow: 0 0 12px #6ba0ff99; }
+    24%       { opacity: 1; transform: translateY(0) scale(1); box-shadow: 0 0 4px #6ba0ff33; }
+    33%       { opacity: 0.55; }
+    36%, 100% { opacity: 0; transform: translateY(-2px) scale(0.85); }
+  }
+  @keyframes chipAdv {
+    0%, 22%   { opacity: 0; transform: translateY(-2px) scale(0.92); }
+    25%       { opacity: 1; transform: translateY(0) scale(1.04); box-shadow: 0 0 12px #ffb86b99; }
+    30%       { opacity: 1; transform: translateY(0) scale(1); box-shadow: 0 0 6px #ffb86b44; }
+    /* this one is the one Akhil will "agree with" in P4 — it persists visibly longer */
+    36%       { opacity: 0.7; }
+    60%, 100% { opacity: 0; transform: translateY(-2px) scale(0.85); }
+  }
+
+  /* The accepted citation marker — appears as the research chip "morphs" into [1] inline */
+  .cite-marker {
+    display: inline-block;
+    padding: 0 4px;
+    margin: 0 1px;
+    font-family: var(--code);
+    font-size: 10.5px;
+    color: var(--research);
+    background: #95e35d12;
+    border: 1px solid #95e35d44;
+    border-radius: 4px;
+    vertical-align: super;
+    line-height: 1;
+    opacity: 0;
+    transform: scale(0.7);
+    animation: citeMorph 30s var(--ease) infinite;
+  }
+  @keyframes citeMorph {
+    0%, 28%   { opacity: 0; transform: scale(0.7); }
+    30%       { opacity: 1; transform: scale(1.25); box-shadow: 0 0 12px #95e35dcc; }
+    33%       { opacity: 1; transform: scale(1); box-shadow: 0 0 4px #95e35d44; }
+    85%       { opacity: 1; transform: scale(1); }
+    92%, 100% { opacity: 0; transform: scale(0.8); }
+  }
+
+  /* ---------- Inline comment anchors on Vishal's prose (Phase 5/6) ---------- */
+  .comment-anchor {
+    display: inline-block;
+    margin: 0 0 0 4px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: #ff8aa81a;
+    border: 1px solid #ff8aa866;
+    color: var(--akhil);
+    font-family: var(--code);
+    font-size: 9.5px;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  .comment-anchor.c1 { animation: anchorIn 30s var(--ease) infinite; animation-delay: 0s; }
+  .comment-anchor.c2 { animation: anchorIn 30s var(--ease) infinite; animation-delay: 0.4s; }
+  .comment-anchor.c3 { animation: anchorIn 30s var(--ease) infinite; animation-delay: 0.8s; }
+  @keyframes anchorIn {
+    0%, 85%   { opacity: 0; transform: scale(0.8); }
+    87%       { opacity: 1; transform: scale(1.15); box-shadow: 0 0 12px #ff8aa888; }
+    90%       { opacity: 1; transform: scale(1); box-shadow: 0 0 4px #ff8aa844; }
+    97%       { opacity: 1; transform: scale(1); }
+    99%, 100% { opacity: 0; transform: scale(0.85); }
+  }
+
+  /* Toasts: to-akhil (V→A, P2, blue band) · to-vishal (A→V, P5, pink band) */
+  .toast {
+    position: absolute;
+    right: 18px;
+    top: 18px;
+    width: 280px;
+    padding: 12px 14px;
+    background: linear-gradient(180deg, #181014 0%, var(--panel) 100%);
+    border: 1.5px solid var(--akhil);
+    border-radius: 10px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.4), 0 0 0 1px #ff8aa822;
+    font-family: var(--code);
+    font-size: 11px;
+    color: var(--text-2);
+    z-index: 9;
+    opacity: 0;
+    transform: translateX(20px) translateY(-6px);
+    pointer-events: none;
+  }
+  .toast .head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .toast .head .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+  }
+  .toast .head .who { color: var(--text); }
+  .toast .head .who.vishal { color: var(--vishal); font-weight: 600; }
+  .toast .head .who.akhil  { color: var(--akhil); font-weight: 600; }
+  .toast .body {
+    font-family: var(--code);
+    font-size: 10.5px;
+    color: var(--text-2);
+    margin-bottom: 8px;
+    line-height: 1.45;
+  }
+  .toast .body em {
+    font-style: normal;
+    color: var(--text);
+  }
+  .toast .body .crit { color: var(--warn); }
+  .toast .body .ok   { color: var(--accent); }
+  .toast .actions {
+    display: flex;
+    gap: 6px;
+  }
+  .toast .btn {
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    letter-spacing: 0.04em;
+    background: #ff8aa81a;
+    border: 1px solid #ff8aa844;
+    color: var(--akhil);
+  }
+  .toast .btn.flat {
+    background: var(--panel);
+    border-color: var(--border);
+    color: var(--text-muted);
+  }
+  .toast .btn.primary {
+    background: var(--akhil);
+    color: #1a0a10;
+    font-weight: 600;
+    border-color: var(--akhil);
+  }
+  .toast .countdown {
+    margin-top: 6px;
+    font-family: var(--code);
+    font-size: 9px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+  }
+  .toast .countdown b { color: var(--accent); font-weight: 500; }
+
+  /* Direction band on left edge: blue=FROM vishal, pink=FROM akhil */
+  .toast.to-akhil  { border-color: var(--vishal); box-shadow: 0 6px 24px rgba(0,0,0,0.4), 0 0 0 1px #6ba0ff33; }
+  .toast.to-akhil::before {
+    content: '';
+    position: absolute;
+    left: -1.5px; top: 12px; bottom: 12px;
+    width: 3px;
+    background: var(--vishal);
+    border-radius: 0 2px 2px 0;
+    box-shadow: 0 0 8px var(--vishal);
+  }
+  .toast.to-akhil .btn { background: #6ba0ff1a; border-color: #6ba0ff66; color: var(--vishal); }
+  .toast.to-akhil .btn.primary { background: var(--vishal); color: #06101e; border-color: var(--vishal); }
+
+  .toast.to-vishal::before {
+    content: '';
+    position: absolute;
+    left: -1.5px; top: 12px; bottom: 12px;
+    width: 3px;
+    background: var(--akhil);
+    border-radius: 0 2px 2px 0;
+    box-shadow: 0 0 8px var(--akhil);
+  }
+
+  /* Animation windows */
+  .toast.to-akhil  { animation: toastAkhil  30s var(--ease) infinite; }
+  .toast.to-vishal { animation: toastVishal 30s var(--ease) infinite; }
+  @keyframes toastAkhil {
+    /* Phase 2: 33–43%. Enter at 34%, pulse, auto-activate at ~41% (highlights "review now") */
+    0%, 33%   { opacity: 0; transform: translateX(24px) translateY(-8px); }
+    35%       { opacity: 1; transform: translateX(0) translateY(0); box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 2px #6ba0ff55; }
+    38%       { opacity: 1; transform: translateX(0) translateY(0); box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px #6ba0ff44; }
+    42%       { opacity: 1; transform: translateX(0) translateY(0) scale(0.98); }
+    43%       { opacity: 0; transform: translateX(-12px) translateY(0) scale(0.95); }
+    44%, 100% { opacity: 0; transform: translateX(-12px); }
+  }
+  @keyframes toastVishal {
+    /* Phase 5: 77–87%. */
+    0%, 76%   { opacity: 0; transform: translateX(24px) translateY(-8px); }
+    78%       { opacity: 1; transform: translateX(0) translateY(0); box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 2px #ff8aa855; }
+    82%       { opacity: 1; transform: translateX(0) translateY(0); box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px #ff8aa844; }
+    86%       { opacity: 1; transform: translateX(0) translateY(0) scale(0.98); }
+    87%       { opacity: 0; transform: translateX(-12px) translateY(0) scale(0.95); }
+    88%, 100% { opacity: 0; transform: translateX(-12px); }
+  }
+
+  /* "highlight on auto-click" for the "review now" button inside to-akhil toast */
+  .toast.to-akhil .btn.primary {
+    animation: autoClick 30s var(--ease) infinite;
+  }
+  @keyframes autoClick {
+    0%, 39%    { box-shadow: none; transform: scale(1); }
+    40%        { box-shadow: 0 0 0 3px #6ba0ff66; transform: scale(1.06); }
+    41%        { box-shadow: 0 0 0 5px #6ba0ff44; transform: scale(0.96); }
+    42%, 100%  { box-shadow: none; transform: scale(1); }
+  }
+
+  /* ---------- Akhil's review-mode chrome ---------- */
+  /* Right-rail comment composer (only present in review-mode) */
+  .akhil-rightrail {
+    grid-area: rev;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    min-height: 0;
+    padding: 10px 12px;
+    opacity: 0;
+    transition: opacity 360ms ease;
+    animation: rightRailCycle 30s var(--ease) infinite;
+  }
+  @keyframes rightRailCycle {
+    0%, 43%   { opacity: 0; }
+    46%, 86%  { opacity: 1; }
+    88%, 100% { opacity: 0; }
+  }
+  .akhil-rightrail .sec {
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--akhil);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 4px 0 8px;
+  }
+  .composer {
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r);
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+  .composer .who {
+    font-family: var(--code);
+    font-size: 9px;
+    color: var(--akhil);
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .composer .who::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--akhil);
+    box-shadow: 0 0 6px var(--akhil);
+  }
+  .composer .anchor {
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .composer .anchor b { color: var(--text-2); font-weight: 500; }
+  .composer .field {
+    min-height: 36px;
+    background: #0c0c0e;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 9px;
+    font-family: var(--serif);
+    font-size: 11.5px;
+    color: var(--text-2);
+    line-height: 1.5;
+    position: relative;
+  }
+  .composer .field .text {
+    display: inline-block;
+    overflow: hidden;
+    white-space: pre-wrap;
+    word-break: break-word;
+    width: 100%;
+    height: 0;
+    opacity: 0;
+  }
+  .composer .text {
+    animation: composerType 30s var(--ease) infinite;
+  }
+  .composer.c1 .text { animation-delay: 0s; }
+  .composer.c2 .text { animation-delay: 1.5s; }
+  .composer.c3 .text { animation-delay: 3s; }
+  @keyframes composerType {
+    0%, 60%   { height: 0; opacity: 0; }
+    63%, 86%  { height: auto; opacity: 1; }
+    88%, 100% { height: 0; opacity: 0; }
+  }
+  .composer .submit-pill {
+    margin-top: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #ff8aa81a;
+    border: 1px solid #ff8aa844;
+    color: var(--akhil);
+    font-family: var(--code);
+    font-size: 9px;
+    letter-spacing: 0.04em;
+  }
+  .composer .submit-pill::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--akhil);
+    box-shadow: 0 0 6px var(--akhil);
+  }
+
+  /* "submit review" button — pulses at end of P4 (76%) */
+  .submit-review-btn {
+    margin-top: 6px;
+    display: block;
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 6px;
+    background: var(--akhil);
+    color: #1a0a10;
+    font-family: var(--code);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: none;
+    text-align: center;
+    animation: submitPulse 30s var(--ease) infinite;
+  }
+  @keyframes submitPulse {
+    0%, 74%   { box-shadow: none; transform: scale(1); opacity: 0.7; }
+    75%       { box-shadow: 0 0 0 3px #ff8aa866; transform: scale(1.04); opacity: 1; }
+    76%       { box-shadow: 0 0 0 6px #ff8aa822; transform: scale(0.98); opacity: 1; }
+    77%       { box-shadow: 0 0 16px #ff8aa899; transform: scale(1); }
+    78%, 86%  { box-shadow: none; transform: scale(1); opacity: 0.9; }
+    88%, 100% { box-shadow: none; transform: scale(1); opacity: 0.7; }
+  }
+
+  /* ---------- Akhil's review-mode left rail content ---------- */
+  .review-flags {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .flag {
+    padding: 7px 9px;
+    border-radius: 6px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    font-family: var(--code);
+    font-size: 10px;
+    line-height: 1.4;
+    color: var(--text-2);
+  }
+  .flag .lbl {
+    display: block;
+    font-size: 8.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+  .flag.research { border-left: 2px solid var(--research); }
+  .flag.research .lbl { color: var(--research); }
+  .flag.adversarial { border-left: 2px solid var(--adversarial); }
+  .flag.adversarial .lbl { color: var(--adversarial); }
+  .flag.density { border-left: 2px solid var(--akhil); }
+  .flag.density .lbl { color: var(--akhil); }
+
+  /* Reviewed content in Akhil's editor (Vishal's §3.2) — flagged-sentence highlights */
+  .flag-sent {
+    background: linear-gradient(180deg, #1a1410 0%, transparent 100%);
+    border-bottom: 1px dashed #ffb86b66;
+    padding: 1px 2px;
+    margin: 0 -2px;
+  }
+  .flag-sent.research { background: linear-gradient(180deg, #14180e 0%, transparent 100%); border-bottom-color: #95e35d66; }
+
+  /* Akhil's review-pane top banner caption */
+  .review-banner {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--akhil);
+    background: #ff8aa814;
+    border: 1px solid #ff8aa844;
+    padding: 2px 9px;
+    border-radius: 999px;
+    letter-spacing: 0.04em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 0;
+    animation: reviewBanner 30s var(--ease) infinite;
+  }
+  .review-banner::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--akhil);
+    box-shadow: 0 0 6px var(--akhil);
+  }
+  @keyframes reviewBanner {
+    0%, 43%   { opacity: 0; }
+    46%, 86%  { opacity: 1; }
+    88%, 100% { opacity: 0; }
+  }
+  /* Drafting indicator on Akhil's side (visible outside review-mode) */
+  .draft-indicator {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--akhil);
+    background: #ff8aa814;
+    border: 1px solid #ff8aa844;
+    padding: 2px 9px;
+    border-radius: 999px;
+    letter-spacing: 0.04em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    animation: draftIndicator 30s var(--ease) infinite;
+  }
+  .draft-indicator::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--akhil);
+    box-shadow: 0 0 6px var(--akhil);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes draftIndicator {
+    0%, 42%   { opacity: 1; }
+    44%, 87%  { opacity: 0; }
+    88%, 100% { opacity: 1; }
+  }
+
+  /* ---------- Vishal's right inline-AI rail (Phase 1) and iterate rail (Phase 6) ---------- */
+  .vishal-inline-rail {
+    grid-area: inline;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    min-height: 0;
+    padding: 10px 12px;
+    position: relative;
+  }
+  .vishal-inline-rail .sec {
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 4px 0 8px;
+  }
+  .vishal-inline-rail .agents-active {
+    animation: vRailAgents 30s var(--ease) infinite;
+    transition: opacity 360ms ease;
+  }
+  @keyframes vRailAgents {
+    0%, 33%   { opacity: 1; }
+    34%, 100% { opacity: 0.35; }
+  }
+  .agent-card {
+    padding: 8px 10px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r);
+    margin-bottom: 8px;
+    font-family: var(--code);
+    font-size: 10px;
+    line-height: 1.4;
+  }
+  .agent-card .head {
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .agent-card .head::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .agent-card.research .head { color: var(--research); }
+  .agent-card.visual   .head { color: var(--visual); }
+  .agent-card.adversarial .head { color: var(--adversarial); }
+  .agent-card .body { color: var(--text-2); font-family: var(--code); }
+  .agent-card .meta { font-size: 9px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Vishal's iterate-mode rail (left) — only visible in P6 */
+  .vishal-iterate-rail {
+    grid-area: 1 / 1 / 2 / 2;  /* overridden by grid-template-areas; placed via animation */
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    min-height: 0;
+    padding: 10px;
+    opacity: 0;
+    animation: iterateRailIn 30s var(--ease) infinite;
+  }
+  @keyframes iterateRailIn {
+    0%, 86%   { opacity: 0; }
+    89%, 100% { opacity: 1; }
+  }
+  .vishal-iterate-rail .sec {
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--akhil);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 4px 0 6px;
+  }
+  .fb-item {
+    padding: 7px 9px;
+    margin-bottom: 6px;
+    border-radius: 6px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-left: 2px solid var(--akhil);
+    font-family: var(--code);
+    font-size: 10px;
+    line-height: 1.4;
+    color: var(--text-2);
+    cursor: pointer;
+  }
+  .fb-item .who {
+    color: var(--akhil);
+    font-size: 8.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 3px;
+  }
+  .fb-item.adv { border-left-color: var(--adversarial); }
+  .fb-item.adv .who { color: var(--adversarial); }
+
+  /* Iterate indicator on Vishal's editor — P6 */
+  .iterate-indicator {
+    position: absolute;
+    top: 10px;
+    right: 16px;
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--akhil);
+    background: #ff8aa814;
+    border: 1px solid #ff8aa844;
+    padding: 2px 9px;
+    border-radius: 999px;
+    letter-spacing: 0.04em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 0;
+    animation: iterateIndIn 30s var(--ease) infinite;
+  }
+  .iterate-indicator::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--akhil);
+    box-shadow: 0 0 6px var(--akhil);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes iterateIndIn {
+    0%, 86%   { opacity: 0; }
+    89%, 100% { opacity: 1; }
+  }
+
+  /* ---------- Harness packet-readying pip on Vishal's strip ---------- */
+  .packet-pip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    letter-spacing: 0.04em;
+    color: var(--akhil);
+    background: #ff8aa81a;
+    border: 1px solid #ff8aa844;
+    opacity: 0;
+    animation: packetPip 30s var(--ease) infinite;
+  }
+  .packet-pip::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--akhil);
+    box-shadow: 0 0 6px var(--akhil);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  /* Phase 2 window 33-43% — pip pulses just before & during the toast */
+  @keyframes packetPip {
+    0%, 31%   { opacity: 0; }
+    33%       { opacity: 1; }
+    42%       { opacity: 1; }
+    44%, 100% { opacity: 0; }
+  }
+
+  /* Akhil's harness pip — switches to "review · binding §3.2" during P3-P4 */
+  .akhil-mode-pip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+  }
+  .akhil-mode-pip::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--accent-2);
+    box-shadow: 0 0 6px var(--accent-2);
+  }
+  .akhil-mode-pip.reviewing {
+    color: var(--akhil);
+    animation: pipPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pipPulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.55; }
+  }
+
+  /* ---------- Per-side statusbars (mini) ---------- */
+  .shell .statusbar {
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+    font-size: 10px;
+    padding: 0 12px;
+    gap: 12px;
+  }
+  .shell .statusbar .yjs-ops {
+    font-variant-numeric: tabular-nums;
+    color: var(--accent-2);
+  }
+
+  /* ---------- Sync gutter ---------- */
+  .gutter {
+    position: relative;
+    background: linear-gradient(180deg, #0d0e10 0%, #08080a 50%, #0d0e10 100%);
+    border-left: 1px solid var(--border-soft);
+    border-right: 1px solid var(--border-soft);
+  }
+  .gutter::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0; bottom: 0;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, #95e35d22 30%, #95e35d22 70%, transparent);
+    transform: translateX(-0.5px);
+  }
+  .gutter .gutter-label {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--code);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    background: var(--bg);
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid var(--border-soft);
+    white-space: nowrap;
+  }
+  .gutter .gutter-foot {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--code);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    color: var(--accent-2);
+    background: var(--bg);
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid #95e35d33;
+    white-space: nowrap;
+  }
+  .gutter .gutter-foot::before {
+    content: '';
+    display: inline-block;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--accent-2);
+    box-shadow: 0 0 6px var(--accent-2);
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+
+  /* Event particles */
+  .ev {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-family: var(--code);
+    font-size: 9.5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    will-change: transform, opacity;
+    z-index: 4;
+  }
+  .ev .who { color: var(--text-muted); }
+  .ev.v { border-color: #6ba0ff66; color: var(--vishal); background: #6ba0ff10; }
+  .ev.a { border-color: #ff8aa866; color: var(--akhil); background: #ff8aa810; }
+  .ev.g { border-color: #95e35d66; color: var(--accent); background: #95e35d10; }
+  .ev {
+    animation-duration: 30s;
+    animation-iteration-count: infinite;
+    animation-timing-function: var(--ease);
+  }
+
+  /* Gutter events: packet (P2), review_done (P5), iterate (P6), agents (P1) */
+  .ev.right.w-packet     { animation-name: flyR_packet; }
+  .ev.left.w-review-done { animation-name: flyL_review_done; }
+  .ev.right.w-iterate    { animation-name: flyR_iterate; }
+  .ev.right.w-agents     { animation-name: flyR_agents; }
+
+  @keyframes flyR_packet {
+    0%, 32%   { opacity: 0; transform: translate(-320%, -50%) scale(0.6); }
+    34%       { opacity: 1; transform: translate(-180%, -50%) scale(1); }
+    38%       { opacity: 1; transform: translate(0, -50%) scale(1.08); box-shadow: 0 0 14px #ff8aa899; }
+    42%       { opacity: 1; transform: translate(180%, -50%) scale(1); }
+    44%, 100% { opacity: 0; transform: translate(320%, -50%) scale(0.6); }
+  }
+  @keyframes flyL_review_done {
+    0%, 76%   { opacity: 0; transform: translate(320%, -45%) scale(0.6); }
+    78%       { opacity: 1; transform: translate(180%, -45%) scale(1); }
+    82%       { opacity: 1; transform: translate(0, -45%) scale(1.08); box-shadow: 0 0 14px #ff8aa899; }
+    86%       { opacity: 1; transform: translate(-180%, -45%) scale(1); }
+    88%, 100% { opacity: 0; transform: translate(-320%, -45%) scale(0.6); }
+  }
+  @keyframes flyR_iterate {
+    0%, 86%   { opacity: 0; transform: translate(-280%, -35%) scale(0.6); }
+    89%       { opacity: 1; transform: translate(-120%, -35%) scale(1); }
+    92%       { opacity: 1; transform: translate(0, -35%) scale(1); }
+    96%       { opacity: 1; transform: translate(120%, -35%) scale(1); }
+    98%, 100% { opacity: 0; transform: translate(280%, -35%) scale(0.6); }
+  }
+  /* Light V-side agent chatter throughout P1 */
+  @keyframes flyR_agents {
+    0%, 5%    { opacity: 0; transform: translate(-280%, -55%) scale(0.6); }
+    10%       { opacity: 0.85; transform: translate(-120%, -55%) scale(1); }
+    20%       { opacity: 0.85; transform: translate(0%, -55%) scale(1); }
+    28%       { opacity: 0.85; transform: translate(120%, -55%) scale(1); }
+    32%, 100% { opacity: 0; transform: translate(280%, -55%) scale(0.6); }
+  }
+
+  .ev.ambient {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    padding: 0;
+    background: var(--accent-2);
+    border: none;
+    color: transparent;
+    box-shadow: 0 0 6px var(--accent-2);
+    opacity: 0;
+    animation: ambient 5.4s var(--ease) infinite;
+  }
+  .ev.ambient.a1 { top: 24%; animation-delay: 0s; }
+  .ev.ambient.a2 { top: 42%; animation-delay: 1.4s; animation-direction: reverse; }
+  .ev.ambient.a3 { top: 60%; animation-delay: 2.8s; }
+  .ev.ambient.a4 { top: 78%; animation-delay: 4.2s; animation-direction: reverse; }
+  @keyframes ambient {
+    0%   { opacity: 0; transform: translate(-2000%, -50%); }
+    18%  { opacity: 0.8; transform: translate(-800%, -50%); }
+    50%  { opacity: 0.9; transform: translate(0%, -50%); }
+    82%  { opacity: 0.8; transform: translate(800%, -50%); }
+    100% { opacity: 0; transform: translate(2000%, -50%); }
+  }
+
+  /* ---------- Page footer ---------- */
+  .page-footer {
+    padding: 18px 32px 44px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    background: var(--bg);
+  }
+  .page-footer .caption {
+    font-family: var(--code);
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-style: italic;
+    letter-spacing: 0.02em;
+    line-height: 1.6;
+    max-width: 920px;
+    margin: 0 auto;
+  }
+  .page-footer .caption b {
+    color: var(--text-2);
+    font-style: normal;
+    font-weight: 500;
+  }
+  .page-footer .caption-sub {
+    margin-top: 6px;
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+    opacity: 0.72;
+    font-style: italic;
+    letter-spacing: 0.02em;
+    line-height: 1.55;
+  }
+  .page-footer .caption-sub a {
+    color: var(--accent);
+    text-decoration: none;
+    font-style: normal;
+    border-bottom: 1px dashed #95e35d55;
+    padding-bottom: 1px;
+  }
+
+  .advance-pill { right: 16px; bottom: 56px; }
+
+  /* ---------- prefers-reduced-motion : lock to Phase 6 final state ---------- */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      animation-fill-mode: forwards !important;
+      transition-duration: 0.001ms !important;
+    }
+    /* Vishal: iterate-mode (left feedback rail visible, inline anchors lit) */
+    .workspace-v { grid-template-columns: 200px 1fr 240px; }
+    .vishal-iterate-rail { opacity: 1; }
+    .iterate-indicator { opacity: 1; }
+    .comment-anchor { opacity: 1; transform: scale(1); }
+    .typed [data-typewriter] { white-space: normal; }
+    .editor-cursor { opacity: 0.3; }
+    .cite-marker { opacity: 1; transform: scale(1); }
+    .ai-chip { opacity: 0; }
+
+    /* Akhil: back to drafting §1 */
+    .workspace-a { grid-template-columns: 200px 1fr 0px; grid-template-rows: 0px 1fr; }
+    .min-strip { opacity: 0; }
+    .akhil-rightrail { opacity: 0; }
+    .review-banner { opacity: 0; }
+    .draft-indicator { opacity: 1; }
+    .editor-a .layer-drafting { display: block; opacity: 1; }
+    .editor-a .layer-review { display: none; opacity: 0; }
+    .akhil-leftrail .lr-drafting { opacity: 1; }
+    .akhil-leftrail .lr-review { opacity: 0; display: none; }
+
+    .shell.vishal .sub-strip .cap-iterate { opacity: 1; }
+    .shell.vishal .sub-strip .cap-drafting { opacity: 0; }
+    .shell.akhil  .sub-strip .cap-drafting { opacity: 1; }
+    .shell.akhil  .sub-strip .cap-review { opacity: 0; }
+    .shell.akhil  .sub-strip .cap-redraft { opacity: 0; }
+
+    .toast { opacity: 0; }
+    .ev { opacity: 0; }
+    .ev.ambient { opacity: 0.6; }
+    .packet-pip { opacity: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <!-- Top header strip -->
+  <div class="page-header">
+    <span class="brand"><span class="dot"></span><b>doclayer</b> · review loop</span>
+    <div>
+      <div class="title">Type. Augment. Notify. Reshape. <span class="accent">Iterate.</span></div>
+      <div class="sub"><em>the harness arranges the collaboration — not just the doc</em></div>
+    </div>
+    <div class="right">
+      <span class="doc-id">/ meta-harnesses · article 2 / collab loop</span>
+      <span style="color: var(--border);">|</span>
+      <span class="doc-id">chain · <b>DOC_LOOP/v1</b></span>
+      <div class="dual-avatars">
+        <div class="avatar" title="Vishal">V</div>
+        <div class="avatar akhil" title="Akhil">A</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stage -->
+  <div class="stage">
+    <!-- ====================== VISHAL'S COLUMN ====================== -->
+    <div class="shell vishal">
+      <div class="topbar">
+        <div class="brand"><span class="dot"></span>doclayer</div>
+        <div class="crumb">/ <b>meta-harnesses</b> / article 2 / <b>collab loop</b></div>
+        <span class="who-tag"><div class="avatar">V</div> vishal</span>
+      </div>
+
+      <div class="harness-strip">
+        <span class="phase loop">REVIEW LOOP</span>
+        <span class="chain">chain · <b>DOC_LOOP/v1</b></span>
+        <ol class="lifecycle-ribbon" aria-label="document lifecycle">
+          <li class="lcr-step done"><span class="lcr-num">01</span>Bootstrap</li>
+          <span class="lcr-line"></span>
+          <li class="lcr-step done"><span class="lcr-num">02</span>Plan</li>
+          <span class="lcr-line"></span>
+          <li class="lcr-step current"><span class="lcr-num">03</span>Review&nbsp;Loop</li>
+          <span class="lcr-line"></span>
+          <li class="lcr-step"><span class="lcr-num">04</span>Publish</li>
+          <span class="lcr-line"></span>
+          <li class="lcr-step"><span class="lcr-num">05</span>Reader</li>
+        </ol>
+        <span class="packet-pip">harness · readying review packet</span>
+        <span class="pip composing" id="pip-v">architect: composing</span>
+      </div>
+
+      <div class="sub-strip">
+        <span class="layout-caption cap-drafting"><span class="layout-tag">layout · <b>wide editor + inline-AI rail</b></span> <span style="color:var(--text-muted)">·</span> <span style="color:var(--text-muted)">3 agents firing inline</span></span>
+        <span class="layout-caption cap-iterate"><span class="layout-tag">harness shifted · <b>iterate mode</b></span> <span style="color:var(--text-muted)">·</span> <span style="color:var(--akhil)">with akhil's comments inline</span></span>
+      </div>
+
+      <div class="workspace-v">
+        <!-- iterate-rail (visible only in P6) -->
+        <div class="vishal-iterate-rail">
+          <div class="sec">review feedback · §3.2 · akhil</div>
+          <div class="fb-item"><span class="who">akhil · ¶2</span>lean denser here — claim+evidence not just claim</div>
+          <div class="fb-item"><span class="who">akhil · ¶3</span>tighten the recursive claim, it's doing too much work</div>
+          <div class="fb-item adv"><span class="who">akhil + adversarial</span>"chassis" implies fixed shape — agree, counter</div>
+          <div style="margin-top:10px;font-family:var(--code);font-size:9px;color:var(--text-muted);letter-spacing:0.04em;">click any to jump · iterate inline</div>
+        </div>
+
+        <!-- Editor -->
+        <div class="editor-v">
+          <span class="iterate-indicator">iterate · §3.2 · with akhil's comments</span>
+
+          <h1>Meta-harnesses</h1>
+          <div class="subtitle">Article 2 · collab loop · drafting §3.2</div>
+
+          <h2>3.2 The chassis is the contract</h2>
+
+          <p>
+            A meta-harness isn't a tool that improves a document — it's the chassis that lets two writers and a model
+            collaborate without one of them having to translate for the other. The architect emits the workspace; the
+            workspace emits the events; the events route to whichever harness has the right surface to receive them.
+            <span class="comment-anchor c1">▸ akhil · 1</span>
+          </p>
+
+          <p>
+            <span class="typed"><span data-typewriter data-tw-text="When the chassis is right, the work " data-tw-loop="30000" data-tw-speed="0.6"></span><span data-typewriter data-tw-text="collapses into one motion: claim, evidence, " data-tw-delay="2400" data-tw-loop="30000" data-tw-speed="0.6"></span><span data-typewriter data-tw-text="counter — all in the same edit." data-tw-delay="5400" data-tw-loop="30000" data-tw-speed="0.6"></span></span><span class="editor-cursor"></span>
+            <span class="ai-chip research"><span class="arrow">↳</span><span class="kind">research</span><span class="text">· arxiv:2024.RLM-hill-climbing supports "self-improving"</span></span>
+          </p>
+
+          <p>
+            This is what people miss about <em>self-improving</em><span class="cite-marker">[1]</span> systems: the
+            improvement isn't in the model, it's in the shape of the loop. A model that hill-climbs against a fixed
+            target is just a better executor. A model whose harness rewrites the target is doing something else
+            entirely<span class="comment-anchor c2">▸ akhil · 2</span> — and the chassis<span class="ai-chip adversarial"><span class="arrow">↳</span><span class="kind">adversarial</span><span class="text">· "chassis" implies fixed shape — counter?</span></span>
+            is what tells you which.
+          </p>
+
+          <p>
+            <span class="ai-chip visual"><span class="arrow">↳</span><span class="kind">visual</span><span class="text">· [diagram idea: recursive loop · architect → harness → events]</span></span>
+            Every recursive structure has the same failure mode: the floor it converges to is the one defined by the
+            very thing doing the converging.<span class="comment-anchor c3">▸ akhil · 3</span> A meta-harness escapes this by letting the user be part of the
+            convergence condition — the harness re-shapes around what the user has just done, not around an abstract
+            quality metric.
+          </p>
+
+          <!-- Toast: arrives at Vishal from Akhil at P5 -->
+          <div class="toast to-vishal">
+            <div class="head">
+              <span class="dot" style="background:var(--akhil);box-shadow:0 0 8px var(--akhil)"></span>
+              <span class="who akhil">akhil</span>
+              <span>· reviewed §3.2 · 3 comments</span>
+            </div>
+            <div class="body">
+              <span class="crit">1 critical</span> · 2 suggestions · <em>agreed with adversarial</em>
+            </div>
+            <div class="actions">
+              <span class="btn primary">see comments →</span>
+              <span class="btn flat">iterate</span>
+            </div>
+            <div class="countdown">harness will <b>shift to iterate mode</b> · auto-pickup §3.2</div>
+          </div>
+        </div>
+
+        <!-- Inline-AI agents rail (right; visible P1-P5, demoted P6) -->
+        <div class="vishal-inline-rail">
+          <div class="sec agents-active">inline ai · agents · firing</div>
+          <div class="agent-card research">
+            <div class="head">research</div>
+            <div class="body">arxiv:2024.<span style="color:var(--text)">RLM-hill-climbing</span></div>
+            <div class="meta">3 supporting citations indexed</div>
+          </div>
+          <div class="agent-card visual">
+            <div class="head">visual</div>
+            <div class="body">diagram idea · recursive loop · architect → harness → events</div>
+            <div class="meta">deferred · drop into §3.3?</div>
+          </div>
+          <div class="agent-card adversarial">
+            <div class="head">adversarial</div>
+            <div class="body">"chassis" — fixed-shape metaphor; the doc argues for fluid shape</div>
+            <div class="meta">counter-framing on hold for review</div>
+          </div>
+          <div class="sec" style="margin-top:14px;">harness routing</div>
+          <div style="font-family:var(--code);font-size:10px;color:var(--text-2);line-height:1.5;">
+            chunk · §3.2<br>
+            <span style="color:var(--text-muted);">accepted · 1 · research</span><br>
+            <span style="color:var(--text-muted);">deferred · 2 · visual + adv</span><br>
+            <span style="color:var(--akhil);">→ packet to akhil</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="statusbar">
+        <span class="live">2 writers live</span>
+        <span>phase: <b style="color:var(--accent)">review loop</b></span>
+        <span style="display:inline-flex;align-items:center;gap:5px;">
+          <span style="width:5px;height:5px;border-radius:50%;background:var(--accent-2);box-shadow:0 0 5px var(--accent-2);"></span>
+          yjs · <b class="yjs-ops" id="yjs-v">512</b> ops
+        </span>
+        <span style="margin-left:auto;color:var(--text-muted);">notifications · <b style="color:var(--text-2);" id="notif-v">0 fired</b></span>
+      </div>
+    </div>
+
+    <!-- ====================== SYNC GUTTER ====================== -->
+    <div class="gutter" id="gutter">
+      <span class="gutter-label">harness bus · notifications</span>
+
+      <span class="ev ambient a1" aria-hidden="true"></span>
+      <span class="ev ambient a2" aria-hidden="true"></span>
+      <span class="ev ambient a3" aria-hidden="true"></span>
+      <span class="ev ambient a4" aria-hidden="true"></span>
+
+      <!-- P1: vishal's agents chatter -->
+      <span class="ev right w-agents v" style="top: 28%;"><span class="who">vishal ·</span> 3 inline agents · §3.2</span>
+
+      <!-- P2: packet → akhil -->
+      <span class="ev right w-packet a" style="top: 44%;"><span class="who">harness ·</span> review packet · vishal → akhil</span>
+
+      <!-- P5: akhil's review → vishal -->
+      <span class="ev left w-review-done a" style="top: 50%;"><span class="who">akhil ·</span> reviewed §3.2 · 3 comments</span>
+
+      <!-- P6: vishal's iterate signal -->
+      <span class="ev right w-iterate v" style="top: 64%;"><span class="who">harness ·</span> shift · iterate mode</span>
+
+      <span class="gutter-foot">notify · reshape · iterate</span>
+    </div>
+
+    <!-- ====================== AKHIL'S COLUMN ====================== -->
+    <div class="shell akhil">
+      <div class="topbar">
+        <div class="brand"><span class="dot"></span>doclayer</div>
+        <div class="crumb">/ <b>meta-harnesses</b> / article 2 / <b>collab loop</b></div>
+        <span class="who-tag"><div class="avatar akhil">A</div> akhil</span>
+      </div>
+
+      <div class="harness-strip">
+        <span class="phase loop">REVIEW LOOP</span>
+        <span class="chain">chain · <b>DOC_LOOP/v1</b></span>
+        <ol class="lifecycle-ribbon" aria-label="document lifecycle">
+          <li class="lcr-step done"><span class="lcr-num">01</span>Bootstrap</li>
+          <span class="lcr-line"></span>
+          <li class="lcr-step done"><span class="lcr-num">02</span>Plan</li>
+          <span class="lcr-line"></span>
+          <li class="lcr-step current"><span class="lcr-num">03</span>Review&nbsp;Loop</li>
+          <span class="lcr-line"></span>
+          <li class="lcr-step"><span class="lcr-num">04</span>Publish</li>
+          <span class="lcr-line"></span>
+          <li class="lcr-step"><span class="lcr-num">05</span>Reader</li>
+        </ol>
+        <span class="akhil-mode-pip" id="pip-a">architect: idle</span>
+      </div>
+
+      <div class="sub-strip">
+        <span class="layout-caption cap-drafting"><span class="layout-tag">layout · <b>tension-rail + editor</b></span> <span style="color:var(--text-muted)">·</span> <span style="color:var(--text-muted)">drafting §1 RLM framing</span></span>
+        <span class="layout-caption cap-review"><span class="layout-tag">harness shifted · <b>review mode</b></span> <span style="color:var(--text-muted)">·</span> <span style="color:var(--akhil)">§3.2 from vishal</span></span>
+      </div>
+
+      <div class="workspace-a">
+        <!-- Minimized §1 strip (review-mode only) -->
+        <div class="min-strip">
+          <span>§1 draft</span>
+          <span style="color: var(--border);">·</span>
+          <span class="body">"reasoning language models aren't a new species; they're what happens when…"</span>
+          <span class="resume">▸ resume later · 312 chars</span>
+        </div>
+
+        <!-- Left rail: drafting OR review flags -->
+        <div class="akhil-leftrail">
+          <div class="lr-drafting">
+            <div class="sec">tension tracker · §1</div>
+            <div style="padding:10px;background:linear-gradient(180deg, #1c1614 0%, var(--panel-2) 100%);border:1px solid #ffb86b33;border-radius:var(--r);margin-bottom:8px;font-size:11px;">
+              <div style="color:var(--warn);font-family:var(--code);font-size:9px;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px;">Open · §1 framing</div>
+              <div style="color:var(--text-2);line-height:1.45;">"RLMs as a new class, or a sub-genus of reasoning models?"</div>
+              <div style="font-family:var(--code);font-size:9px;color:var(--text-muted);margin-top:6px;">Akhil · drafting</div>
+            </div>
+            <div class="sec">density · §1</div>
+            <div style="padding:10px;background:var(--panel-2);border:1px solid var(--border-soft);border-radius:var(--r);">
+              <div style="font-family:var(--code);font-size:9.5px;color:var(--text-muted);margin-bottom:6px;">claims / paragraph</div>
+              <div style="height:5px;background:var(--border);border-radius:2px;overflow:hidden;">
+                <span style="display:block;height:100%;background:var(--accent);width:78%;"></span>
+              </div>
+              <div style="margin-top:6px;font-family:var(--code);font-size:10px;color:var(--text-2);">
+                <span style="color:var(--accent);font-weight:600;">2.8</span> / target 3
+              </div>
+            </div>
+          </div>
+
+          <div class="lr-review">
+            <div class="sec">suggested review areas</div>
+            <div class="review-flags">
+              <div class="flag research">
+                <span class="lbl">research-flagged</span>
+                "arxiv hill-climbing" — verify claim
+              </div>
+              <div class="flag adversarial">
+                <span class="lbl">adversarial-flagged</span>
+                "chassis" framing — counter or commit?
+              </div>
+              <div class="flag adversarial">
+                <span class="lbl">adversarial-flagged</span>
+                recursive convergence claim — too strong?
+              </div>
+              <div class="flag density">
+                <span class="lbl">density meter</span>
+                <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:3px;">
+                  <span style="display:block;height:100%;background:var(--accent);width:62%;"></span>
+                </div>
+                <span style="font-family:var(--code);font-size:9px;color:var(--text-muted);margin-top:3px;display:inline-block;">2.1 claims/¶ · lean denser</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Editor -->
+        <div class="editor-a">
+          <span class="draft-indicator">drafting §1</span>
+          <span class="review-banner">harness shifted · review mode · §3.2 from vishal</span>
+
+          <!-- Layer 1: Akhil's own §1 drafting (default, P0-P2 & P6-P7) -->
+          <div class="layer-drafting">
+            <h1>Meta-harnesses</h1>
+            <div class="subtitle">Article 2 · collab loop · drafting §1</div>
+
+            <h2>1. RLMs, framed claim-first</h2>
+            <p>
+              Reasoning Language Models aren't a new species; they're what happens when the harness around an LLM
+              gets reflective enough to grade its own steps.
+            </p>
+            <p>
+              The eval is the loop, not the token. Once you accept that, every architectural choice downstream —
+              memory, tool-use, multi-pass refine — collapses into one question: what are you scoring at each step?
+            </p>
+            <p>
+              A claim-first opener earns the reader's patience. So: the meta-harness is an architect that
+              rewrites itself<span class="editor-cursor akhil-caret"></span>
+            </p>
+          </div>
+
+          <!-- Layer 2: Vishal's §3.2 chunk for review (P3-P5) -->
+          <div class="layer-review">
+            <h1 style="font-size:15px;color:var(--text-muted);margin-bottom:14px;letter-spacing:0.04em;text-transform:uppercase;font-family:var(--code);font-weight:500;">reviewing · §3.2 · 240 words</h1>
+
+            <h2>3.2 The chassis is the contract</h2>
+
+            <p>
+              A <span class="flag-sent">meta-harness isn't a tool that improves a document — it's the chassis that lets two writers and a model collaborate without one of them having to translate for the other.</span> The architect emits the workspace; the workspace emits the events; the events route to whichever harness has the right surface to receive them.
+            </p>
+
+            <p>
+              <span class="flag-sent research">When the chassis is right, the work collapses into one motion: claim, evidence, counter — all in the same edit.</span>
+            </p>
+
+            <p>
+              This is what people miss about <em>self-improving</em> systems: the improvement isn't in the model, it's in the shape of the loop. <span class="flag-sent">A model that hill-climbs against a fixed target is just a better executor. A model whose harness rewrites the target is doing something else entirely</span> — and the chassis is what tells you which.
+            </p>
+
+            <p>
+              Every recursive structure has the same failure mode: <span class="flag-sent">the floor it converges to is the one defined by the very thing doing the converging.</span> A meta-harness escapes this by letting the user be part of the convergence condition.
+            </p>
+          </div>
+
+          <!-- Toast: arrives at Akhil from Vishal at P2 -->
+          <div class="toast to-akhil">
+            <div class="head">
+              <span class="dot" style="background:var(--vishal);box-shadow:0 0 8px var(--vishal)"></span>
+              <span class="who vishal">vishal</span>
+              <span>· §3.2 sent for review</span>
+            </div>
+            <div class="body">
+              <em>240 words</em> · 3 AI suggestions accepted · <span class="ok">~4 min</span> to review
+            </div>
+            <div class="actions">
+              <span class="btn primary">review now ↗</span>
+              <span class="btn flat">snooze</span>
+            </div>
+            <div class="countdown">auto-shift to review mode in <b>2s</b></div>
+          </div>
+        </div>
+
+        <!-- Right rail: comment composer (review-mode only) -->
+        <div class="akhil-rightrail">
+          <div class="sec">comments · §3.2</div>
+
+          <div class="composer c1">
+            <div class="who">akhil · ¶2</div>
+            <div class="anchor">anchor · <b>"claim, evidence, counter…"</b></div>
+            <div class="field"><span class="text">lean denser here — claim + evidence not just claim. this is the wedge sentence; carry weight.</span></div>
+            <div class="submit-pill">posted · thread anchored</div>
+          </div>
+
+          <div class="composer c2">
+            <div class="who">akhil · ¶3</div>
+            <div class="anchor">anchor · <b>"…rewrites the target…"</b></div>
+            <div class="field"><span class="text">tighten the recursive claim — it's doing too much work in one sentence.</span></div>
+            <div class="submit-pill">posted · thread anchored</div>
+          </div>
+
+          <div class="composer c3">
+            <div class="who">akhil · agreed with adversarial</div>
+            <div class="anchor">anchor · <b>"chassis"</b></div>
+            <div class="field"><span class="text">+1 the adversarial flag. "chassis" reads as fixed-shape; the rest of the doc argues for fluid. counter or replace the metaphor.</span></div>
+            <div class="submit-pill">posted · adversarial → comment</div>
+          </div>
+
+          <div class="submit-review-btn">submit review · 3 comments</div>
+        </div>
+      </div>
+
+      <div class="statusbar">
+        <span class="live">2 writers live</span>
+        <span>phase: <b style="color:var(--accent)">review loop</b></span>
+        <span style="display:inline-flex;align-items:center;gap:5px;">
+          <span style="width:5px;height:5px;border-radius:50%;background:var(--accent-2);box-shadow:0 0 5px var(--accent-2);"></span>
+          yjs · <b class="yjs-ops" id="yjs-a">512</b> ops
+        </span>
+        <span style="margin-left:auto;color:var(--text-muted);">mode · <b style="color:var(--text-2);" id="mode-a">drafting §1</b></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom caption -->
+  <div class="page-footer">
+    <p class="caption">
+      type → AI augments → notify → reviewer's harness shifts → review → notify back → author iterates. <b>that's the loop the harness arranges.</b>
+    </p>
+    <p class="caption-sub">
+      this is the actual collaboration shape doclayer enables — not a doc with comments, a <b style="color:var(--text-2);font-style:normal;font-weight:500;">workspace that reshapes per user per task</b> · <a href="00-flow.html">see the full flow reel →</a>
+    </p>
+  </div>
+</div>
+
+<div class="scenario-nav">
+  <a href="08-workstream.html">← workstream</a>
+  <a href="index.html">all scenarios</a>
+  <a href="00-flow.html">next: flow reel →</a>
+</div>
+
+<a class="advance-pill" href="00-flow.html">next: flow reel →</a>
+
+<script>
+  // Shared yjs ops counter
+  (function () {
+    var elV = document.getElementById('yjs-v');
+    var elA = document.getElementById('yjs-a');
+    if (!elV || !elA) return;
+    var ops = 512;
+    function tick() {
+      ops += 1 + Math.floor(Math.random() * 3);
+      var s = ops.toLocaleString();
+      elV.textContent = s;
+      elA.textContent = s;
+      setTimeout(tick, 1100 + Math.random() * 1300);
+    }
+    setTimeout(tick, 1200);
+  })();
+
+  // Per-cycle UI text updates: notifications fired counter (V), mode label (A), pip text (V & A).
+  (function () {
+    var notifV = document.getElementById('notif-v');
+    var modeA  = document.getElementById('mode-a');
+    var pipV   = document.getElementById('pip-v');
+    var pipA   = document.getElementById('pip-a');
+    if (!notifV || !modeA || !pipV || !pipA) return;
+    var CYCLE = 30000;
+    var start = performance.now();
+    function frame(now) {
+      var t = ((now - start) % CYCLE) / CYCLE;
+
+      // notifications-fired count on Vishal's statusbar (running tally per cycle)
+      var n = 0;
+      if (t > 0.33) n++;   // packet to akhil
+      if (t > 0.77) n++;   // review back to vishal
+      notifV.textContent = n + ' fired · loop active';
+
+      // Akhil's mode label
+      if (t < 0.43) modeA.textContent = 'drafting §1';
+      else if (t < 0.87) modeA.textContent = 'reviewing §3.2';
+      else modeA.textContent = 'resume §1';
+
+      // Vishal architect pip
+      if (t < 0.33) { pipV.textContent = 'architect: composing'; pipV.classList.add('composing'); }
+      else if (t < 0.43) { pipV.textContent = 'architect: packing review'; pipV.classList.add('composing'); }
+      else if (t < 0.77) { pipV.textContent = 'architect: awaiting review'; pipV.classList.remove('composing'); }
+      else if (t < 0.87) { pipV.textContent = 'architect: comments inbound'; pipV.classList.add('composing'); }
+      else { pipV.textContent = 'architect: iterate-mode'; pipV.classList.add('composing'); }
+
+      // Akhil architect pip
+      if (t < 0.33) { pipA.textContent = 'architect: idle'; pipA.classList.remove('reviewing'); }
+      else if (t < 0.43) { pipA.textContent = 'architect: incoming packet'; pipA.classList.add('reviewing'); }
+      else if (t < 0.60) { pipA.textContent = 'architect: shifting → review'; pipA.classList.add('reviewing'); }
+      else if (t < 0.77) { pipA.textContent = 'architect: review · binding §3.2'; pipA.classList.add('reviewing'); }
+      else if (t < 0.87) { pipA.textContent = 'architect: dispatching review'; pipA.classList.add('reviewing'); }
+      else { pipA.textContent = 'architect: resume §1'; pipA.classList.remove('reviewing'); }
+
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  })();
+</script>
+<script>
+  /* ---------- Reusable typewriter engine (shared across mocks) ---------- */
+  (function () {
+    if (window.__twEngine) return; window.__twEngine = true;
+    var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function rng(a, b) { return a + Math.random() * (b - a); }
+    function charDelay(ch) {
+      var d = rng(35, 75);
+      if (ch === '.' || ch === '?' || ch === '!') d += rng(200, 450);
+      else if (ch === ',' || ch === ';' || ch === ':') d += rng(150, 280);
+      else if (ch === '\n' || ch === '—') d += rng(300, 500);
+      else if (ch === ' ') {
+        if (Math.random() < 0.15) d += rng(80, 150);
+        if (Math.random() < 0.02) d += rng(600, 900);
+      }
+      return d;
+    }
+    function mount(el) {
+      var text = el.getAttribute('data-tw-text') || el.textContent || '';
+      el.setAttribute('data-tw-text', text);
+      var startDelay = parseInt(el.getAttribute('data-tw-delay') || '0', 10);
+      var loopMs = parseInt(el.getAttribute('data-tw-loop') || '0', 10);
+      var speedMul = parseFloat(el.getAttribute('data-tw-speed') || '1');
+      if (reduced) { el.textContent = text; el.classList.add('tw-done'); return; }
+      el.textContent = '';
+      function run() {
+        el.textContent = '';
+        el.classList.remove('tw-done');
+        el.classList.add('tw-typing');
+        var i = 0;
+        function step() {
+          if (i >= text.length) {
+            el.classList.remove('tw-typing');
+            el.classList.add('tw-done');
+            try { el.dispatchEvent(new CustomEvent('tw:done', { bubbles: true })); } catch (e) {}
+            return;
+          }
+          var ch = text.charAt(i);
+          el.textContent += ch;
+          i++;
+          setTimeout(step, charDelay(ch) * speedMul);
+        }
+        step();
+      }
+      setTimeout(function tick() {
+        run();
+        if (loopMs > 0) setTimeout(tick, loopMs);
+      }, startDelay);
+    }
+    function init() {
+      document.querySelectorAll('[data-typewriter]').forEach(mount);
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  })();
+</script>
+
+<button class="guide-btn" id="guideBtn">guide</button>
+<div class="scenario-guide-scrim" id="guideScrim"></div>
+<aside class="scenario-guide" id="guidePanel" aria-hidden="true">
+  <div class="sg-head">
+    <div class="sg-title">guide &middot; <b>scenario 09</b></div>
+    <button class="sg-close" id="guideClose" aria-label="close">&times;</button>
+  </div>
+  <div class="sg-body">
+    <p class="sg-tagline">The review loop, end-to-end. One full protocol cycle, ~30 seconds, both sides visible.</p>
+    <div class="sg-beat"><span class="sg-t">0&ndash;4s &middot; type with AI inline augment</span><p>Vishal types &sect;3.2 live. As he writes, the AI augments two clauses inline &mdash; a citation badge attaches; a hedge gets a contradiction nudge. The augments are atoms in the manifest, not transient suggestions.</p></div>
+    <div class="sg-beat"><span class="sg-t">4&ndash;7s &middot; packet pip</span><p>Vishal pauses. The architect packs the section as a review packet: text + augments + provenance + a target reviewer. A packet pip flies across the gutter toward Akhil&rsquo;s shell.</p></div>
+    <div class="sg-beat"><span class="sg-t">7&ndash;10s &middot; notification to akhil</span><p>Akhil&rsquo;s shell receives the packet. The intent-state badge shifts: idle &rarr; incoming packet &rarr; shifting into review. The lifecycle ribbon advances the &ldquo;review&rdquo; chip.</p></div>
+    <div class="sg-beat"><span class="sg-t">10&ndash;17s &middot; akhil&rsquo;s harness reshapes</span><p>Akhil&rsquo;s shell visibly reshapes: outline collapses to make room; review rail expands. The packet binds into Akhil&rsquo;s editor with full provenance &mdash; Vishal&rsquo;s augments are visible inline, dim-styled.</p></div>
+    <div class="sg-beat"><span class="sg-t">17&ndash;22s &middot; comments compose</span><p>Akhil composes comments. Some are accept-with-edit, some are reject-with-reason. The architect packs comments + dispositions as a return packet.</p></div>
+    <div class="sg-beat"><span class="sg-t">22&ndash;26s &middot; notification back</span><p>The return packet flies back across the gutter to Vishal. His harness shifts to &ldquo;iterate-mode&rdquo; &mdash; a diff rail appears alongside the editor with Akhil&rsquo;s comments inline.</p></div>
+    <div class="sg-beat"><span class="sg-t">26&ndash;30s &middot; vishal iterates with comments</span><p>Vishal applies revisions. Some comments resolve as accepts; others spawn back-and-forth threads. The loop closes; both harnesses return to their original intents. The chain is one packet richer.</p></div>
+    <div class="sg-proof"><span class="lbl">what this proves</span>The protocol is symmetric. Either side&rsquo;s harness reshapes on receive, not on send. The review loop is the actual mechanism the meta-harness arranges.</div>
+  </div>
+  <div class="sg-foot"><a href="guide.html">full walkthrough</a><span>09 / review-loop</span></div>
+</aside>
+<script src="guide.js"></script>
+</body>
+</html>

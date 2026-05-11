@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>doclayer — Scenario 01: Bootstrap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* Bootstrap timeline: form (0-3.5s) → atoms snap into grid (3.9-7.6s) → harness settles (8.2s+). */
+  #stage-form {
+    animation: fadeOut 400ms ease 3.5s both;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+  }
+  #stage-compose {
+    opacity: 0;
+    animation: fadeIn 350ms ease 3.9s both, fadeOut 500ms ease 7.9s both;
+    position: absolute;
+    inset: 41px 0 0 0;
+    z-index: 2;
+    pointer-events: none;
+  }
+  #stage-harness {
+    opacity: 0;
+    animation: fadeIn 500ms ease 8.2s both;
+    position: absolute;
+    inset: 0;
+    display: flex;
+    z-index: 3;
+  }
+  @keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; visibility: hidden; }
+  }
+  .stage-wrap {
+    position: relative;
+    height: calc(100vh - var(--row-topbar) - var(--row-harness) - var(--row-status) - 41px);
+  }
+  .app { grid-template-rows: var(--row-topbar) var(--row-harness) 1fr var(--row-status); }
+
+  /* Keyboard hint under the form */
+  .kbd-hint {
+    margin-top: 14px;
+    font-family: var(--code);
+    font-size: 10.5px;
+    color: var(--text-muted);
+    display: flex;
+    gap: 14px;
+    opacity: 0;
+    animation: fadeIn 500ms ease 0.6s both;
+    letter-spacing: 0.02em;
+  }
+  .kbd-hint .kbd {
+    margin-right: 4px;
+  }
+
+  /* Compose stage — dotted grid scaffold the atoms land into. */
+  .compose-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(to right, var(--border-soft) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--border-soft) 1px, transparent 1px);
+    background-size: 32px 32px;
+    opacity: 0;
+    animation: gridFade 350ms ease 4.0s both;
+  }
+  @keyframes gridFade {
+    from { opacity: 0; }
+    to { opacity: 0.35; }
+  }
+
+  /* Manifest banner — labels what the viewer is watching */
+  .compose-banner {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 14px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-family: var(--code);
+    font-size: 10.5px;
+    color: var(--text-2);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0;
+    animation: fadeIn 300ms ease 4.0s both, fadeOut 400ms ease 7.7s both;
+    z-index: 6;
+  }
+  .compose-banner .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .compose-banner .accent { color: var(--accent); }
+  .compose-banner .ts {
+    color: var(--text-muted);
+    font-size: 9.5px;
+    text-transform: none;
+    letter-spacing: 0.02em;
+    margin-left: 4px;
+  }
+
+  /* Typed-grammar atoms — labeled rectangles fly in & lock to harness positions (320/1fr/360). */
+  .atom {
+    position: absolute;
+    opacity: 0;
+    animation-fill-mode: both;
+    animation-timing-function: cubic-bezier(.2,.8,.2,1);
+  }
+  .atom-frame {
+    width: 100%;
+    height: 100%;
+    border: 1.5px solid var(--accent);
+    background: var(--accent-soft);
+    border-radius: var(--r);
+    box-shadow: 0 0 0 4px rgba(149,227,93,0.08);
+  }
+  .atom-cap {
+    position: absolute;
+    top: -18px;
+    left: 0;
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  /* phase-tab — thin strip pinned to top, spans full width */
+  .atom-phase {
+    top: 0; left: 0; right: 0;
+    height: 41px;
+    animation-name: snapDown;
+    animation-duration: 480ms;
+    animation-delay: 4.3s;
+  }
+  .atom-phase .atom-cap { top: 8px; left: 14px; color: var(--accent); }
+
+  /* outline-tree — left rail, 320px */
+  .atom-outline {
+    top: 41px; left: 0;
+    width: 320px;
+    bottom: 0;
+    animation-name: snapLeft;
+    animation-duration: 520ms;
+    animation-delay: 4.9s;
+  }
+  .atom-outline .atom-cap { top: 12px; left: 16px; }
+
+  /* document-block — center column, between the rails */
+  .atom-doc {
+    top: 41px; left: 320px; right: 360px;
+    bottom: 0;
+    animation-name: snapUp;
+    animation-duration: 520ms;
+    animation-delay: 5.5s;
+  }
+  .atom-doc .atom-cap { top: 12px; left: 16px; }
+
+  /* evidence-panel — top of right rail, 360px wide */
+  .atom-evidence {
+    top: 41px; right: 0;
+    width: 360px;
+    height: 58%;
+    animation-name: snapRight;
+    animation-duration: 520ms;
+    animation-delay: 6.1s;
+  }
+  .atom-evidence .atom-cap { top: 12px; left: 16px; }
+
+  /* tension-tracker — bottom of right rail */
+  .atom-tension {
+    bottom: 0; right: 0;
+    width: 360px;
+    top: calc(41px + 58%);
+    animation-name: snapRight;
+    animation-duration: 520ms;
+    animation-delay: 6.7s;
+  }
+  .atom-tension .atom-cap { top: 12px; left: 16px; }
+
+  @keyframes snapDown {
+    0%   { opacity: 0; transform: translateY(-40px) scale(0.96); }
+    70%  { opacity: 1; transform: translateY(2px) scale(1.005); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes snapUp {
+    0%   { opacity: 0; transform: translateY(40px) scale(0.96); }
+    70%  { opacity: 1; transform: translateY(-2px) scale(1.005); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes snapLeft {
+    0%   { opacity: 0; transform: translateX(-50px) scale(0.96); }
+    70%  { opacity: 1; transform: translateX(2px) scale(1.005); }
+    100% { opacity: 1; transform: translateX(0) scale(1); }
+  }
+  @keyframes snapRight {
+    0%   { opacity: 0; transform: translateX(50px) scale(0.96); }
+    70%  { opacity: 1; transform: translateX(-2px) scale(1.005); }
+    100% { opacity: 1; transform: translateX(0) scale(1); }
+  }
+
+  /* Audience-fit pill */
+  .fit-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 9px 2px 8px;
+    background: var(--accent-soft);
+    border: 1px solid #95e35d44;
+    border-radius: 999px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--accent);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    vertical-align: middle;
+    margin-left: 12px;
+  }
+  .fit-pill::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  /* Doc meta line under subtitle */
+  .doc-meta {
+    font-family: var(--code);
+    font-size: 10.5px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    margin: -20px 0 28px;
+    display: flex;
+    gap: 14px;
+  }
+  .doc-meta b { color: var(--text-2); font-weight: 500; }
+  .doc-meta .sep { color: var(--border); }
+
+  /* Harness-strip overflow guard: ribbon step-nums hide < 1320px, padding shrinks < 1180px. */
+  .harness-strip { overflow: hidden; white-space: nowrap; min-width: 0; }
+  .harness-strip > * { flex-shrink: 0; }
+  .harness-strip .pip { margin-left: auto; padding-left: 8px; }
+  @media (max-width: 1320px) {
+    .lifecycle-ribbon { margin-left: 12px; }
+    .lifecycle-ribbon .lcr-num { display: none; }
+    .lifecycle-ribbon .lcr-line { width: 10px; }
+  }
+  @media (max-width: 1180px) {
+    .lifecycle-ribbon .lcr-step:not(.current):not(.done) span,
+    .lifecycle-ribbon .lcr-step:not(.current) { padding: 2px 6px; }
+  }
+
+  /* advance-pill: stacked above scenario-nav to avoid overlap. */
+  .advance-pill { right: 16px; bottom: 56px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+    #stage-form { display: none; }
+    #stage-compose { display: none; }
+    #stage-harness { opacity: 1; }
+    .atom { opacity: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span>doclayer</div>
+    <div class="crumb">/ <b>untitled</b> / new workspace</div>
+    <div class="right">
+      <span class="muted">scenario 01: bootstrap</span>
+      <div class="avatar">V</div>
+    </div>
+  </div>
+
+  <div class="harness-strip">
+    <span class="phase">PLAN</span>
+    <span class="chain">chain · <b>DOC_PLAN/v1</b></span>
+    <ol class="lifecycle-ribbon" aria-label="document lifecycle">
+      <li class="lcr-step current"><span class="lcr-num">01</span>Bootstrap</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step"><span class="lcr-num">02</span>Plan</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step"><span class="lcr-num">03</span>Draft</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step"><span class="lcr-num">04</span>Review</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step"><span class="lcr-num">05</span>Publish</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step"><span class="lcr-num">06</span>Reader</li>
+    </ol>
+    <span class="pip composing">architect: composing</span>
+  </div>
+
+  <div class="stage-wrap">
+    <!-- Stage 1: Bootstrap form -->
+    <div id="stage-form" class="bootstrap-stage">
+      <div class="bootstrap-card fade-up">
+        <h2>What are you writing?</h2>
+        <div class="sub">Four answers. The workspace composes itself around what you're writing.</div>
+
+        <div class="field">
+          <label>Title</label>
+          <div class="input typing" id="t1"></div>
+        </div>
+        <div class="field">
+          <label>Co-authors</label>
+          <div class="input typing" id="t2"></div>
+        </div>
+        <div class="field">
+          <label>Audience</label>
+          <div class="input typing" id="t3"></div>
+        </div>
+        <div class="field">
+          <label>Output</label>
+          <div class="input typing" id="t4"></div>
+        </div>
+
+        <div class="kbd-hint">
+          <span><span class="kbd">Tab</span> next field</span>
+          <span><span class="kbd">⌘</span><span class="kbd">↵</span> bootstrap harness</span>
+          <span style="margin-left:auto;">autosave on</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stage 2: Harness composing itself — typed grammar atoms snap into the layout -->
+    <div id="stage-compose" aria-hidden="true">
+      <div class="compose-grid"></div>
+      <div class="compose-banner">
+        <span class="dot"></span>
+        <span>architect</span>
+        <span class="accent">composing manifest</span>
+        <span class="ts">DOC_PLAN/v1 · 5 atoms</span>
+      </div>
+      <div class="atom atom-phase">
+        <div class="atom-frame"></div>
+        <div class="atom-cap">phase-tab</div>
+      </div>
+      <div class="atom atom-outline">
+        <div class="atom-frame"></div>
+        <div class="atom-cap">outline-tree</div>
+      </div>
+      <div class="atom atom-doc">
+        <div class="atom-frame"></div>
+        <div class="atom-cap">document-block</div>
+      </div>
+      <div class="atom atom-evidence">
+        <div class="atom-frame"></div>
+        <div class="atom-cap">evidence-panel</div>
+      </div>
+      <div class="atom atom-tension">
+        <div class="atom-frame"></div>
+        <div class="atom-cap">tension-tracker</div>
+      </div>
+    </div>
+
+    <!-- Stage 3: Harness has materialized -->
+    <div id="stage-harness">
+      <div class="phase-tabs" style="position:absolute;top:0;left:0;right:0;z-index:5;">
+        <div class="phase-tab active"><span class="step">01</span>Plan</div>
+        <div class="phase-tab"><span class="step">02</span>Draft</div>
+        <div class="phase-tab"><span class="step">03</span>Review</div>
+        <div class="phase-tab"><span class="step">04</span>Publish</div>
+      </div>
+
+      <div class="workspace" style="grid-template-columns: 320px 1fr 360px; padding-top: 41px; width: 100%; height: 100%;">
+        <div class="panel slide-right d-1">
+          <div class="panel-header">Outline <span class="muted" style="margin-left:auto;font-family:var(--code);font-size:10px;">8 items</span></div>
+          <div class="panel-body">
+            <ul class="outline">
+              <li class="fade-up d-1"><span class="num">1</span> What is a harness?</li>
+              <li class="fade-up d-2"><span class="num">2</span> Why scaling LLMs doesn't solve it</li>
+              <li class="fade-up d-3"><span class="num">3</span> Building meta-harnesses</li>
+              <li class="fade-up d-4 nested"><span class="num">3.1</span> Genetic algorithms</li>
+              <li class="fade-up d-5 nested"><span class="num">3.2</span> Short/long-term loss</li>
+              <li class="fade-up d-6 nested"><span class="num">3.3</span> RLMs</li>
+              <li class="fade-up d-7"><span class="num">4</span> Multiplayer harnesses</li>
+              <li class="fade-up d-8"><span class="num">5</span> Evals at every layer</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="panel" style="border-right: 1px solid var(--border);">
+          <div class="panel-header">Document — <span class="muted">draft 0 · 0 words · just now</span></div>
+          <div class="editor fade-up d-2" style="padding: 32px 56px;">
+            <h1 class="fade-up d-1">Meta-harnesses<span class="fit-pill fade-up d-3">audience-fit · 0.86</span></h1>
+            <div class="subtitle fade-up d-2">A series — by Akhil R &amp; Vishal Tandale</div>
+            <div class="doc-meta fade-up d-3">
+              <span><b>draft 0</b></span><span class="sep">·</span>
+              <span><b>0</b> words</span><span class="sep">·</span>
+              <span>edited <b>just now</b></span><span class="sep">·</span>
+              <span>2 cursors idle</span>
+            </div>
+            <p class="fade-up d-4" style="color: var(--text-muted); font-style: italic; font-family: var(--sans); font-size: 13px; border-left: 2px solid var(--accent); padding: 8px 12px; background: var(--panel);">
+              The architect proposed this outline from your chat history with Akhil and your prior writing on RLMs. Drag to reorder. Pin sections you want to keep.
+            </p>
+          </div>
+        </div>
+
+        <div class="panel slide-left d-3">
+          <div class="panel-header">Evidence <span style="margin-left: auto; font-family: var(--code); font-size: 10px; color: var(--accent-2);">7 sources · indexed</span></div>
+          <div class="panel-body">
+            <div class="evidence">
+              <div class="evidence-card fade-up d-2">
+                <div class="src">raw.works</div>
+                <div class="title">RLMs are the new reasoning models</div>
+                <div class="meta"><span>by you</span><span style="color:var(--accent-2);">indexed</span></div>
+              </div>
+              <div class="evidence-card fade-up d-3">
+                <div class="src">x.com/tanayj</div>
+                <div class="title">Highest talent density intern group</div>
+                <div class="meta"><span>shared by Akhil</span></div>
+              </div>
+              <div class="evidence-card fade-up d-4">
+                <div class="src">youtube.com</div>
+                <div class="title">Meta-harnesses &amp; RLMs talk</div>
+                <div class="meta"><span>shared by you</span></div>
+              </div>
+              <div class="evidence-card fade-up d-5">
+                <div class="src">x.com/paraschopra</div>
+                <div class="title">Anthropic RFs</div>
+                <div class="meta"><span>shared by Akhil</span></div>
+              </div>
+            </div>
+
+            <div style="margin-top: 24px;" class="fade-up d-6">
+              <div style="font-family: var(--code); font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;">Open tensions</div>
+              <div class="tension">
+                <div class="head">Unresolved</div>
+                <div class="body">Online vs offline harness — overcomplication or recursive truth?</div>
+                <div class="authors">Akhil ← → Vishal</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span class="live">harness live</span>
+    <span>phase: <b style="color:var(--accent)">plan</b></span>
+    <span>chain: <b>DOC_PLAN/v1</b></span>
+    <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;" title="websocket transport · presence + yjs-sync">
+      <span style="width:6px;height:6px;border-radius:50%;background:var(--accent-2);box-shadow:0 0 6px var(--accent-2);animation:pulse 1.6s ease-in-out infinite;"></span>
+      ws://doclayer.live · 12ms
+    </span>
+  </div>
+</div>
+
+<div class="scenario-nav">
+  <a href="index.html">← all scenarios</a>
+  <a href="02-planning.html">next: planning →</a>
+</div>
+
+<a class="advance-pill" href="02-planning.html">next: planning →</a>
+
+<script>
+  // Type out fields one character at a time
+  function typeInto(el, text, speed) {
+    let i = 0;
+    el.textContent = '';
+    el.classList.add('typing');
+    const tick = () => {
+      if (i < text.length) {
+        el.textContent += text[i++];
+        setTimeout(tick, speed);
+      } else {
+        el.classList.remove('typing');
+      }
+    };
+    tick();
+  }
+  // Four fields land by ~3.3s so the form can fade at 3.5s.
+  setTimeout(() => typeInto(document.getElementById('t1'), 'Meta-harnesses: a series', 22), 200);
+  setTimeout(() => typeInto(document.getElementById('t2'), 'Akhil R', 32), 850);
+  setTimeout(() => typeInto(document.getElementById('t3'), 'AI engineers and builders', 19), 1500);
+  setTimeout(() => typeInto(document.getElementById('t4'), 'doclayer.live + reader-harness', 19), 2300);
+</script>
+
+<button class="guide-btn" id="guideBtn">guide</button>
+<div class="scenario-guide-scrim" id="guideScrim"></div>
+<aside class="scenario-guide" id="guidePanel" aria-hidden="true">
+  <div class="sg-head">
+    <div class="sg-title">guide &middot; <b>scenario 01</b></div>
+    <button class="sg-close" id="guideClose" aria-label="close">&times;</button>
+  </div>
+  <div class="sg-body">
+    <p class="sg-tagline">Empty workspace &rarr; grammar atoms snap into a layout. The harness composes itself.</p>
+    <div class="sg-beat"><span class="sg-t">0&ndash;3s &middot; the blank form</span><p>Four fields type themselves in: title, contributors, audience, deploy target. These aren&rsquo;t form fields &mdash; they&rsquo;re atoms about to enter the document grammar.</p></div>
+    <div class="sg-beat"><span class="sg-t">3&ndash;4s &middot; architect composes</span><p>The architect (an LLM) emits a phase manifest from those four atoms. The manifest is a typed graph: each field becomes a node with edges to layout slots.</p></div>
+    <div class="sg-beat"><span class="sg-t">4&ndash;6s &middot; atoms snap in</span><p>Outline, evidence panel, voice sampler appear in place &mdash; not because a template was selected, but because the manifest grammar bound them. Different audience, different layout.</p></div>
+    <div class="sg-beat"><span class="sg-t">6&ndash;8s &middot; harness emerges</span><p>Topbar, harness-strip, status bar light up. The lifecycle ribbon highlights the next phase chip (&ldquo;plan&rdquo;). The workspace is live.</p></div>
+    <div class="sg-proof"><span class="lbl">what this proves</span>The editor isn&rsquo;t a template &mdash; it&rsquo;s authored from the manifest. Same code path, different harness, every time.</div>
+  </div>
+  <div class="sg-foot"><a href="guide.html">full walkthrough</a><span>01 / bootstrap</span></div>
+</aside>
+<script src="guide.js"></script>
+</body>
+</html>

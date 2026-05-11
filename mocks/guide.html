@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>doclayer — how the demo works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  body { background: var(--bg); }
+  .guide-wrap {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 56px 32px 96px;
+  }
+  .guide-eyebrow {
+    font-family: var(--code);
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .guide-eyebrow .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
+    margin-right: 8px;
+    vertical-align: middle;
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+  .guide-wrap h1 {
+    font-size: 48px;
+    letter-spacing: -0.03em;
+    font-weight: 600;
+    margin: 0 0 14px;
+    line-height: 1.05;
+  }
+  .guide-wrap h1 .accent { color: var(--accent); }
+  .guide-wrap .lede {
+    font-family: var(--serif);
+    font-size: 18px;
+    color: var(--text-2);
+    max-width: 680px;
+    line-height: 1.55;
+    margin: 0 0 8px;
+  }
+  .guide-wrap .lede em { color: var(--text); font-style: italic; }
+  .guide-wrap .lede code {
+    font-family: var(--code);
+    font-size: 14px;
+    color: var(--accent);
+    background: var(--panel);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+  .guide-wrap .meta {
+    font-family: var(--code);
+    font-size: 12px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    margin: 18px 0 56px;
+  }
+  .guide-wrap .meta b { color: var(--text-2); font-weight: 500; }
+
+  .section-head {
+    margin: 64px 0 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-head .label {
+    font-family: var(--code);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .section-head h2 {
+    margin: 0;
+    font-size: 28px;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+  }
+  .section-head p {
+    margin: 8px 0 0;
+    color: var(--text-2);
+    font-family: var(--serif);
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  .order-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    counter-reset: ord;
+  }
+  .order-item {
+    position: relative;
+    padding: 22px 24px 22px 72px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    margin-bottom: 12px;
+    counter-increment: ord;
+    transition: border-color 220ms ease;
+  }
+  .order-item:hover { border-color: var(--accent); }
+  .order-item::before {
+    content: counter(ord);
+    position: absolute;
+    top: 22px;
+    left: 22px;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    border: 1px solid #95e35d44;
+    color: var(--accent);
+    font-family: var(--code);
+    font-size: 13px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .order-item .o-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .order-item h3 {
+    margin: 0;
+    font-size: 17px;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+  .order-item .num {
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border: 1px solid #95e35d44;
+    border-radius: 999px;
+    background: var(--accent-soft);
+  }
+  .order-item p {
+    margin: 0;
+    color: var(--text-2);
+    font-family: var(--serif);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  .order-item a.open {
+    display: inline-block;
+    margin-top: 10px;
+    font-family: var(--code);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+  }
+
+  .scenario-block {
+    padding: 24px 28px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    margin-bottom: 14px;
+  }
+  .scenario-block .sh {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .scenario-block .sh .num {
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .scenario-block h3 {
+    margin: 0;
+    font-size: 19px;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+  .scenario-block .tagline {
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--text-2);
+    font-size: 14px;
+    margin: 0 0 14px;
+  }
+  .scenario-block ul.beats {
+    margin: 0 0 14px;
+    padding: 0;
+    list-style: none;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--text-2);
+  }
+  .scenario-block ul.beats li {
+    padding: 4px 0 4px 18px;
+    position: relative;
+  }
+  .scenario-block ul.beats li::before {
+    content: '·';
+    position: absolute;
+    left: 4px;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .scenario-block ul.beats li code {
+    font-family: var(--code);
+    font-size: 12px;
+    color: var(--accent-2);
+    background: var(--panel-2);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .scenario-block .row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border-soft);
+  }
+  .scenario-block .proves {
+    font-family: var(--code);
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    flex: 1;
+  }
+  .scenario-block .proves b {
+    color: var(--accent-2);
+    font-weight: 500;
+  }
+  .scenario-block .open-link {
+    font-family: var(--code);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    padding: 5px 12px;
+    border: 1px solid #95e35d44;
+    border-radius: 999px;
+    transition: all 200ms ease;
+  }
+  .scenario-block .open-link:hover {
+    background: var(--accent-soft);
+    text-decoration: none;
+  }
+
+  .glossary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+  }
+  .glossary .term {
+    padding: 16px 18px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r);
+  }
+  .glossary .term .word {
+    font-family: var(--code);
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+  }
+  .glossary .term .def {
+    font-family: var(--serif);
+    font-size: 13.5px;
+    color: var(--text-2);
+    line-height: 1.55;
+  }
+
+  .guide-footer {
+    margin-top: 72px;
+    padding-top: 28px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-family: var(--code);
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .guide-footer a {
+    color: var(--accent);
+    letter-spacing: 0.04em;
+  }
+</style>
+</head>
+<body>
+<div class="guide-wrap">
+
+  <div class="guide-eyebrow"><span class="dot"></span>doclayer / guide</div>
+  <h1>doclayer <span class="accent">·</span> how the demo works</h1>
+  <p class="lede">
+    doclayer is a <em>meta-harness</em> for collaborative writing. Two writers and three AI agents share a series; the editor reshapes itself per phase, per author, and per task. When the article ships, the same document grammar becomes a <code>reader-harness</code> — the page re-binds to each reader's prior knowledge.
+  </p>
+  <p class="lede" style="margin-top: 14px;">
+    The mocks below are static HTML with CSS animations and auto-play on load. This guide tells you what to watch and why.
+  </p>
+  <div class="meta">
+    <b>10 scenarios</b> · ~6 minutes to walk the whole arc · suggested viewing order below
+  </div>
+
+  <div class="section-head">
+    <div class="label">recommended viewing order</div>
+    <h2>Walk the arc top-down.</h2>
+    <p>The lifecycle reel sets context for everything else. The protocol loop (09) is the actual mechanism. The two canonical views (07, 08) show the system from one shared moment and across a series. Single-author slices (01–05) zoom into the grammar atoms. Reader-harness (06) is what ships.</p>
+  </div>
+
+  <ol class="order-list">
+    <li class="order-item">
+      <div class="o-head">
+        <h3>Lifecycle reel</h3>
+        <span class="num">scenario 00 · ~2 min</span>
+      </div>
+      <p>Start here. End-to-end playthrough: trajectory generation → two-window parallel work → cross-collab handoff → single-article publish → reader-harness. One continuous reel; everything else is a zoom.</p>
+      <a class="open" href="00-flow.html">open 00-flow →</a>
+    </li>
+    <li class="order-item">
+      <div class="o-head">
+        <h3>The review loop, end-to-end</h3>
+        <span class="num">scenario 09 · the protocol</span>
+      </div>
+      <p>The protocol in 30s. Type → AI inline augments → notification → reviewer's harness reshapes → comments back → author iterates. This is the actual mechanism the meta-harness arranges.</p>
+      <a class="open" href="09-review-loop.html">open 09-review-loop →</a>
+    </li>
+    <li class="order-item">
+      <div class="o-head">
+        <h3>Multiplayer, two-up</h3>
+        <span class="num">scenario 07 · canonical</span>
+      </div>
+      <p>In-the-moment view. Two writers, different sections of the same chain, two structurally different harnesses authored from each author's prior. Sync gutter routes cross-collab as reviews.</p>
+      <a class="open" href="07-multiplayer.html">open 07-multiplayer →</a>
+    </li>
+    <li class="order-item">
+      <div class="o-head">
+        <h3>Workstream across lanes</h3>
+        <span class="num">scenario 08 · canonical</span>
+      </div>
+      <p>The canonical lanes view. Series spine across 4 articles, per-author work queues, and 3 AI agents (research, adversarial, visual) orchestrating in the middle. The harness arranges the <em>work</em>, not just the chrome.</p>
+      <a class="open" href="08-workstream.html">open 08-workstream →</a>
+    </li>
+    <li class="order-item">
+      <div class="o-head">
+        <h3>Single-author slices</h3>
+        <span class="num">scenarios 01–05</span>
+      </div>
+      <p>Zoom into one author's view of each phase: bootstrap (01), planning (02), drafting (03), review (04), publish (05). Useful for seeing the grammar atoms in detail without the multiplayer overhead.</p>
+      <a class="open" href="01-bootstrap.html">open 01-bootstrap →</a>
+    </li>
+    <li class="order-item">
+      <div class="o-head">
+        <h3>Reader-harness</h3>
+        <span class="num">scenario 06 · what ships</span>
+      </div>
+      <p>The published article re-renders per reader prior. Same atoms; three different binds. The doc becomes the reader's harness.</p>
+      <a class="open" href="06-reader-harness.html">open 06-reader-harness →</a>
+    </li>
+  </ol>
+
+  <div class="section-head">
+    <div class="label">scenario notes</div>
+    <h2>What to watch for, scene by scene.</h2>
+    <p>Each scenario has a small <code style="font-family:var(--code);font-size:12px;color:var(--accent-2);background:var(--panel);padding:1px 6px;border-radius:4px;">? guide</code> button in the lower-left that opens a timed-beat narration synced to the on-page animation. The summaries below are static.</p>
+  </div>
+
+  <div class="scenario-block">
+    <div class="sh"><span class="num">scenario 00</span><h3>Lifecycle reel</h3></div>
+    <p class="tagline">The doc, born and shipped in one continuous reel.</p>
+    <ul class="beats">
+      <li><code>0–10s</code> · The architect proposes a trajectory of 4 articles. Atoms — title, contributors, scope, deploy target — snap into a manifest.</li>
+      <li><code>10–28s</code> · Trajectory distributes into two work-windows. Vishal claims one lane, Akhil another. Each window is structurally different.</li>
+      <li><code>28–55s</code> · Parallel drafting. Three AI agents fire from the middle column: research, adversarial, visual. Each surfaces inline augments in both lanes.</li>
+      <li><code>55–80s</code> · Cross-collab handoff. Vishal completes a section; the architect packs it as a review packet; Akhil's harness reshapes around it.</li>
+      <li><code>80–105s</code> · Single-article lifecycle zooms in: plan → draft → review → publish.</li>
+      <li><code>105–120s</code> · Publish click. Build sequence runs. Reader-harness goes live; readers arrive with different priors; the page re-binds.</li>
+    </ul>
+    <div class="row">
+      <span class="proves"><b>proves:</b> the whole system in one breath. Lifecycle is a single continuous mechanism, not five disjoint apps.</span>
+      <a class="open-link" href="00-flow.html">open scenario →</a>
+    </div>
+  </div>
+
+  <div class="scenario-block">
+    <div class="sh"><span class="num">scenario 01</span><h3>Bootstrap</h3></div>
+    <p class="tagline">Empty workspace → grammar atoms snap into a layout.</p>
+    <ul class="beats">
+      <li><code>0–3s</code> · A blank form. Title, contributors, audience, deploy target. Four fields type themselves in.</li>
+      <li><code>3–4s</code> · The architect composes a manifest. Atoms are emitted as a typed graph (each field becomes a node).</li>
+      <li><code>4–6s</code> · Atoms snap into a layout. Outline, evidence panel, voice sampler appear in place — not because a template was picked, but because the manifest grammar bound them.</li>
+      <li><code>6–8s</code> · The harness emerges. Topbar, harness-strip, status bar light up. The next phase chip ("plan") is highlighted on the lifecycle ribbon.</li>
+    </ul>
+    <div class="row">
+      <span class="proves"><b>proves:</b> the editor isn't a template — it's authored from the manifest.</span>
+      <a class="open-link" href="01-bootstrap.html">open scenario →</a>
+    </div>
+  </div>
+
+  <div class="scenario-block">
+    <div class="sh"><span class="num">scenario 02</span><h3>Planning, two cursors</h3></div>
+    <p class="tagline">Two-up planning — divergent shells over a shared outline.</p>
+    <ul class="beats">
+      <li><code>0–5s</code> · Two panes, same outline tree. Vishal's pane shows an evidence panel scraped from shared links; Akhil's pane shows a tension tracker.</li>
+      <li><code>5–10s</code> · Both cursors land in the outline. A section is reordered; both views update with a graph delta, not a bulk re-render.</li>
+      <li><code>10–16s</code> · Akhil disagrees on a sub-heading. The tension tracker opens a row. Resolution flows through chat in the tension card itself.</li>
+      <li><code>16–22s</code> · Tension resolves. The outline locks the section. Phase chip advances toward "draft".</li>
+    </ul>
+    <div class="row">
+      <span class="proves"><b>proves:</b> two harnesses can disagree on layout while sharing one document.</span>
+      <a class="open-link" href="02-planning.html">open scenario →</a>
+    </div>
+  </div>
+
+  <div class="scenario-block">
+    <div class="sh"><span class="num">scenario 03</span><h3>Drafting</h3></div>
+    <p class="tagline">Typing live, agents fire inline, the harness cycles intent.</p>
+    <ul class="beats">
+      <li><code>0–6s</code> · Live typing in the editor. The harness-strip pip is "composing".</li>
+      <li><code>6–10s</code> · Research and adversarial agents fire inline augments — citation badges, contradiction nudges — directly in the prose.</li>
+      <li><code>10–16s</code> · The cursor stalls. The harness shifts intent state: three revision variants surface in the right rail.</li>
+      <li><code>16–20s</code> · A variant is accepted; the paragraph swaps in place; the voice sampler updates Akhil's density meter.</li>
+      <li><code>20–22s</code> · Voice fidelity nudge: density drifted toward Vishal's voice. A tiny chip suggests tightening; one click accepts.</li>
+    </ul>
+    <div class="row">
+      <span class="proves"><b>proves:</b> the harness has intent state. Same text, different surface for write vs. revise.</span>
+      <a class="open-link" href="03-drafting.html">open scenario →</a>
+    </div>
+  </div>
+
+  <div class="scenario-block">
+    <div class="sh"><span class="num">scenario 04</span><h3>Review</h3></div>
+    <p class="tagline">Dismissals feed back into lesson memory.</p>
+    <ul class="beats">
+      <li><code>0–4s</code> · AI suggestion chips bloom inside review blocks. Some are accepted; most are dismissed.</li>
+      <li><code>4–8s</code> · Dismissed chips animate as particles flying toward a lesson card. The particle physics is the model literally learning.</li>
+      <li><code>8–12s</code> · The lesson is composed ("user dislikes hedge-words in §3.x"). Author approves it; it commits to memory.</li>
+      <li><code>12–16s</code> · §3.2 auto-tightens: hedge-words vanish in-place because the new lesson re-ran the same suggester with a different prior.</li>
+      <li><code>16–22s</code> · A comment thread resolves. Phase chip advances to "publish-ready".</li>
+    </ul>
+    <div class="row">
+      <span class="proves"><b>proves:</b> the model learns the writer's taste during review, not after.</span>
+      <a class="open-link" href="04-review.html">open scenario →</a>
+    </div>
+  </div>
+
+  <div class="scenario-block">
+    <div class="sh"><span class="num">scenario 05</span><h3>Publish</h3></div>
+    <p class="tagline">Preview cycles priors. One button ships to doclayer.live.</p>
+    <ul class="beats">
+      <li><code>0–6s</code> · Reader-harness preview cycles through three priors (novice / practitioner / researcher). Same atoms, three binds.</li>
+      <li><code>6–10s</code> · Preflight checks tick green: voice fidelity, citation coverage, lesson-memory commit, build-target reachable.</li>
+      <li><code>10–12s</code> · Publish click. Button pulses; the build sequence panel expands.</li>
+      <li><code>12–18s</code> · Build steps stream: pack atoms → render manifest → emit reader-harness shell → deploy → warm CDN.</li>
+      <li><code>18–22s</code> · Live state. Share URL appears; a copy-button flash hints the article is shipped.</li>
+    </ul>
+    <div class="row">
+      <span class="proves"><b>proves:</b> publish is a build, not an export. The output is a harness, not a static page.</span>
+      <a class="open-link" href="05-publish.html">open scenario →</a>
+    </div>
+  </div>
+
+  <div class="scenario-block">
+    <div class="sh"><span class="num">scenario 06</span><h3>Reader harness</h3></div>
+    <p class="tagline">The doc becomes the reader's harness.</p>
+    <ul class="beats">
+      <li><code>0–5s</code> · A single hero column with a prior switcher: novice / practitioner / researcher.</li>
+      <li><code>5–12s</code> · The reader changes prior. The article re-binds sequentially — paragraphs, citations, callouts re-render in place from the same atoms.</li>
+      <li><code>12–18s</code> · Money shot: the column expands into three parallel reader views side-by-side. Same atoms; three structurally different renders.</li>
+      <li><code>18–22s</code> · Comments thread shows three readers asking three differently-pitched questions about the same atom — proof the harness is per-reader, not per-page.</li>
+    </ul>
+    <div class="row">
+      <span class="proves"><b>proves:</b> the article itself is a harness. The reader's browser binds against the grammar.</span>
+      <a class="open-link" href="06-reader-harness.html">open scenario →</a>
+    </div>
+  </div>
+
+  <div class="scenario-block">
+    <div class="sh"><span class="num">scenario 07</span><h3>Multiplayer, two harnesses</h3></div>
+    <p class="tagline">In-the-moment view. 02–05 are slices of this.</p>
+    <ul class="beats">
+      <li><code>0–5s</code> · Two shells side-by-side. Vishal's shell is research-heavy; Akhil's is voice/density-heavy. Same document, different harnesses.</li>
+      <li><code>5–12s</code> · Both authors type in different sections. Cursors don't collide; the harnesses don't share layout — they share grammar.</li>
+      <li><code>12–18s</code> · Sync gutter between the two shells routes a cross-collab event: a comment from Akhil shows up in Vishal's review rail as a review packet.</li>
+      <li><code>18–22s</code> · Density meter for §3.2 climbs as Akhil tightens. Both shells reflect the same chain state, expressed differently.</li>
+    </ul>
+    <div class="row">
+      <span class="proves"><b>proves:</b> "multiplayer" doesn't mean "shared view" — it means shared chain, separate harnesses.</span>
+      <a class="open-link" href="07-multiplayer.html">open scenario →</a>
+    </div>
+  </div>
+
+  <div class="scenario-block">
+    <div class="sh"><span class="num">scenario 08</span><h3>Workstream across lanes</h3></div>
+    <p class="tagline">Series spine, two writer lanes, three AI agents.</p>
+    <ul class="beats">
+      <li><code>0–4s</code> · The series spine across the top — 4 articles, current article highlighted, others queued.</li>
+      <li><code>4–10s</code> · Two writer lanes drop down from the spine. Each lane is a per-author task queue with its own intent state.</li>
+      <li><code>10–14s</code> · Orchestration rail in the middle — the three AI agents (research, adversarial, visual). Pulses light up as agents fire.</li>
+      <li><code>14–18s</code> · A research agent surfaces a citation into Vishal's lane. An adversarial agent flags a claim in Akhil's lane. A visual agent renders a diagram inline.</li>
+      <li><code>18–20s</code> · Counter strip ticks: words, citations, lessons, sections approved. The shared spine state updates.</li>
+      <li><code>20–22s</code> · The lanes thesis: the harness arranges the work, not just the chrome. Lanes are first-class.</li>
+    </ul>
+    <div class="row">
+      <span class="proves"><b>proves:</b> doclayer is a workstream, not just an editor. Agents and writers share lanes.</span>
+      <a class="open-link" href="08-workstream.html">open scenario →</a>
+    </div>
+  </div>
+
+  <div class="scenario-block">
+    <div class="sh"><span class="num">scenario 09</span><h3>The review loop, end-to-end</h3></div>
+    <p class="tagline">One full protocol cycle, ~30 seconds, both sides visible.</p>
+    <ul class="beats">
+      <li><code>0–4s</code> · Vishal types §3.2 live. The AI inline-augments two clauses as he writes.</li>
+      <li><code>4–7s</code> · Vishal pauses. The architect packs the section as a review packet — a "packet pip" flies across the gutter.</li>
+      <li><code>7–10s</code> · Akhil's harness gets a notification. The intent state shifts: "incoming packet → review-mode".</li>
+      <li><code>10–17s</code> · Akhil's harness reshapes: outline collapses, review rail expands, the packet is bound into the editor with full provenance.</li>
+      <li><code>17–22s</code> · Akhil composes comments. A second packet — comments + dispositions — gets dispatched back.</li>
+      <li><code>22–26s</code> · Vishal's harness receives the comments. Intent state shifts to "iterate-mode". His editor surfaces a diff rail.</li>
+      <li><code>26–30s</code> · Vishal applies revisions. The loop closes. Both harnesses return to their original intents.</li>
+    </ul>
+    <div class="row">
+      <span class="proves"><b>proves:</b> the protocol is symmetric. Either side's harness reshapes on receive, not on send.</span>
+      <a class="open-link" href="09-review-loop.html">open scenario →</a>
+    </div>
+  </div>
+
+  <div class="section-head">
+    <div class="label">concepts</div>
+    <h2>Glossary.</h2>
+    <p>The vocabulary that turns up across the scenarios.</p>
+  </div>
+
+  <div class="glossary">
+    <div class="term">
+      <div class="word">harness</div>
+      <div class="def">The runtime around the model. UI shell, intent state, agent routing, panel layout — everything the model isn't, but everything that lets it be useful.</div>
+    </div>
+    <div class="term">
+      <div class="word">meta-harness</div>
+      <div class="def">A controller that authors controllers. doclayer is one: it composes per-phase, per-author, per-task harnesses from a document grammar.</div>
+    </div>
+    <div class="term">
+      <div class="word">document grammar</div>
+      <div class="def">The typed atoms the architect emits. Title, section, claim, citation, lesson, comment. Atoms bind layouts; layouts don't define atoms.</div>
+    </div>
+    <div class="term">
+      <div class="word">lane</div>
+      <div class="def">A per-user task queue. Each writer has one; the series spine sits above them. Agents fire into lanes from a shared orchestration rail.</div>
+    </div>
+    <div class="term">
+      <div class="word">AI agents</div>
+      <div class="def">Three: <em>research</em> (citation surfacing), <em>adversarial</em> (claim-checking, contradiction-flagging), <em>visual</em> (diagrams, callouts). Each augments writers inline.</div>
+    </div>
+    <div class="term">
+      <div class="word">cross-collab</div>
+      <div class="def">Review and comment routing between authors. The architect packs a section as a packet; the receiving harness reshapes on receive.</div>
+    </div>
+    <div class="term">
+      <div class="word">reader-harness</div>
+      <div class="def">What ships. The published article is a tiny harness that re-binds the grammar against each reader's prior. Same atoms, structurally different page.</div>
+    </div>
+    <div class="term">
+      <div class="word">lesson memory</div>
+      <div class="def">Dismissed suggestions and accepted edits compose into lessons. Lessons rerun the suggester with a new prior. The model learns the writer's taste.</div>
+    </div>
+  </div>
+
+  <div class="guide-footer">
+    <a href="index.html">← back to all scenarios</a>
+    <span>doclayer.live · <a href="mailto:vishalt2000@gmail.com">vishalt2000@gmail.com</a></span>
+  </div>
+
+</div>
+</body>
+</html>

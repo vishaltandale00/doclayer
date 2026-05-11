@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>doclayer — Scenario 03: Drafting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* 16s cycle: type (0-3s) · stall (3-4.4s) · variants (4.4-9s) · accept (9-11.2s) · settle (11.2-16s). */
+  .app { grid-template-rows: var(--row-topbar) var(--row-harness) 1fr var(--row-status); }
+
+  /* Phase tabs morphing emphasis (slower so the eye stays on stall+variants) */
+  .phase-tab.active { animation: glowAccent 6s ease-in-out infinite; }
+  @keyframes glowAccent {
+    0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); }
+    50% { box-shadow: 0 0 0 3px var(--accent-soft); }
+  }
+
+  /* ---------- Editor live-typing (JS-driven, see typewriter engine at end of body) ---------- */
+  .typed-line { display: inline; }
+  .typed-line [data-typewriter] { display: inline; white-space: normal; }
+
+  /* Editor cursor (existing element kept; now part of the typing line) */
+  .editor-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 18px;
+    background: var(--vishal);
+    vertical-align: text-bottom;
+    margin-left: 1px;
+    animation: blink 1s steps(1) infinite, idleStall 16s ease-in-out infinite;
+  }
+  @keyframes idleStall {
+    0%, 14%   { background: var(--vishal); box-shadow: none; }
+    15%, 22%  { background: var(--vishal); box-shadow: 0 0 4px var(--vishal); }
+    /* stall window — Architect intervening (compressed: ~3.5s-10s) */
+    23%, 62%  { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+    /* settle — variant accepted, voice restored */
+    68%, 100% { background: var(--vishal); box-shadow: 0 0 4px var(--vishal); }
+  }
+
+  /* ---------- Stall banner ---------- */
+  .stall-banner {
+    margin: 12px 0;
+    padding: 10px 14px;
+    background: linear-gradient(90deg, #1a1410, var(--panel));
+    border: 1px solid #ffb86b44;
+    border-radius: var(--r);
+    font-family: var(--code);
+    font-size: 11px;
+    color: var(--warn);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    animation: stallCycle 16s ease-in-out infinite;
+  }
+  @keyframes stallCycle {
+    0%, 22%        { opacity: 0; transform: translateY(4px); }
+    27%, 62%       { opacity: 1; transform: translateY(0); }
+    66%, 100%      { opacity: 0; transform: translateY(-4px); }
+  }
+  .stall-banner .pulse {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--warn);
+    box-shadow: 0 0 12px var(--warn);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+
+  /* ---------- Grammar atom callout ---------- */
+  .grammar-callout {
+    position: relative;
+    margin: -2px 0 8px;
+    padding: 4px 8px;
+    align-self: flex-start;
+    display: inline-block;
+    font-family: var(--code);
+    font-size: 9.5px;
+    color: var(--text-muted);
+    background: #0f1514;
+    border: 1px dashed #95e35d44;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+    opacity: 0;
+    animation: stallCycle 16s ease-in-out infinite;
+    animation-delay: 0.4s;
+  }
+  .grammar-callout b { color: var(--accent); font-weight: 500; }
+  .grammar-callout .ttl {
+    color: var(--warn);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Variant stack ---------- */
+  .variant-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+    animation: stackCollapse 16s ease-in-out infinite;
+  }
+  @keyframes stackCollapse {
+    0%, 62%  { max-height: 600px; opacity: 1; }
+    67%, 100% { max-height: 0; opacity: 0; margin-top: 0; }
+  }
+  .variant {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  .variant.v1 { animation: variantIn 16s ease-in-out infinite; animation-delay: 0s; }
+  .variant.v2 { animation: variantIn 16s ease-in-out infinite, v2Chosen 16s ease-in-out infinite; }
+  .variant.v3 { animation: variantIn 16s ease-in-out infinite; animation-delay: 0s; }
+  /* Stagger the entries via per-variant offsets in keyframes */
+  .variant.v1 { animation-name: variantIn1; }
+  .variant.v3 { animation-name: variantIn3; }
+  @keyframes variantIn1 {
+    0%, 24%  { opacity: 0; transform: translateY(8px); }
+    29%, 62% { opacity: 1; transform: translateY(0); }
+    66%, 100%{ opacity: 0; transform: translateY(-6px); }
+  }
+  @keyframes variantIn {
+    0%, 26%  { opacity: 0; transform: translateY(8px); }
+    31%, 62% { opacity: 1; transform: translateY(0); }
+    66%, 100%{ opacity: 0; transform: translateY(-6px); }
+  }
+  @keyframes variantIn3 {
+    0%, 28%  { opacity: 0; transform: translateY(8px); }
+    33%, 62% { opacity: 1; transform: translateY(0); }
+    66%, 100%{ opacity: 0; transform: translateY(-6px); }
+  }
+  /* The chosen variant flares before the stack collapses */
+  @keyframes v2Chosen {
+    0%, 54%   { border-color: var(--border-soft); box-shadow: none; transform: translateY(0); }
+    58%, 62%  { border-color: var(--akhil); box-shadow: 0 0 0 2px #ff8aa844, 0 0 24px #ff8aa833; transform: translateY(-1px); }
+    66%, 100% { border-color: var(--akhil); box-shadow: 0 0 0 2px #ff8aa844; opacity: 0; transform: translateY(-6px); }
+  }
+
+  /* Accepted-paragraph swap — min-height prevents reflow on swap. */
+  .swap-target {
+    position: relative;
+    min-height: 7.6em;
+  }
+  .swap-target .placeholder,
+  .swap-target .accepted {
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    display: block;
+    transition: opacity 400ms ease;
+  }
+  .swap-target .placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+    animation: placeholderOut 16s ease-in-out infinite;
+  }
+  .swap-target .accepted {
+    color: var(--text);
+    background: linear-gradient(90deg, #ff8aa811, transparent 60%);
+    border-left: 2px solid var(--akhil);
+    padding: 2px 0 2px 12px;
+    margin-left: -14px;
+    opacity: 0;
+    animation: acceptedIn 16s ease-in-out infinite;
+  }
+  @keyframes placeholderOut {
+    0%, 62%   { opacity: 1; }
+    65%, 100% { opacity: 0; }
+  }
+  @keyframes acceptedIn {
+    0%, 63%  { opacity: 0; transform: translateY(4px); }
+    68%, 90% { opacity: 1; transform: translateY(0); background: linear-gradient(90deg, #ff8aa844, transparent 70%); }
+    100%     { opacity: 1; background: linear-gradient(90deg, #ff8aa811, transparent 60%); }
+  }
+
+  /* ---------- Density meter live update + claim pip ---------- */
+  .density-fill {
+    width: 0;
+    animation: densityPulse 16s ease-in-out infinite;
+  }
+  @keyframes densityPulse {
+    0%   { width: 32%; background: var(--warn); }
+    14%  { width: 48%; background: var(--warn); }
+    28%  { width: 62%; background: var(--accent); }
+    48%  { width: 71%; background: var(--accent); }
+    66%  { width: 86%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+    90%  { width: 86%; background: var(--accent); }
+    100% { width: 32%; background: var(--warn); }
+  }
+  .density-stat-num {
+    font-variant-numeric: tabular-nums;
+  }
+  .density .stat .val {
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* Claim pip — flies from accepted paragraph toward density meter in right rail */
+  .claim-pip {
+    position: absolute;
+    left: 60%;
+    top: 70%;
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--accent);
+    background: #0a1408;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    padding: 2px 8px;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 20;
+    will-change: transform, opacity;
+  }
+  /* JS writes per-pip --pip-dx/--pip-dy at runtime. */
+  .claim-pip.p1 { --pip-dx: 360px; --pip-dy: -180px; animation: pipFly 16s ease-in-out infinite; }
+  .claim-pip.p2 { left: 55%; top: 64%; --pip-dx: 380px; --pip-dy: -200px; animation: pipFly2 16s ease-in-out infinite; }
+  @keyframes pipFly {
+    0%, 66%   { opacity: 0; transform: translate(0, 0) scale(0.8); }
+    68%       { opacity: 1; transform: translate(0, 0) scale(1); box-shadow: 0 0 12px var(--accent); }
+    74%       { opacity: 1; transform: translate(var(--pip-dx), var(--pip-dy)) scale(0.85); box-shadow: 0 0 8px var(--accent); }
+    77%, 100% { opacity: 0; transform: translate(var(--pip-dx), var(--pip-dy)) scale(0.5); }
+  }
+  @keyframes pipFly2 {
+    0%, 70%   { opacity: 0; transform: translate(0, 0) scale(0.8); }
+    72%       { opacity: 1; transform: translate(0, 0) scale(1); box-shadow: 0 0 12px var(--accent); }
+    78%       { opacity: 1; transform: translate(var(--pip-dx), var(--pip-dy)) scale(0.85); box-shadow: 0 0 8px var(--accent); }
+    81%, 100% { opacity: 0; transform: translate(var(--pip-dx), var(--pip-dy)) scale(0.5); }
+  }
+
+  /* ---------- Voice fidelity ---------- */
+  .fidelity-block {
+    margin-top: 20px;
+    padding: 12px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r);
+    background: var(--panel-2);
+  }
+  .fidelity-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+  }
+  .fidelity-row + .fidelity-row { border-top: 1px solid var(--border-soft); }
+  .fidelity-dial {
+    --val: 85;
+    --col: var(--vishal);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background:
+      conic-gradient(var(--col) calc(var(--val) * 1%), #2a2a31 0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .fidelity-dial::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    background: var(--panel-2);
+  }
+  .fidelity-dial .pct {
+    position: relative;
+    font-family: var(--code);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .fidelity-dial.vishal { --col: var(--vishal); animation: dialV 16s ease-in-out infinite; }
+  .fidelity-dial.akhil  { --col: var(--akhil);  animation: dialA 16s ease-in-out infinite; }
+  @keyframes dialV {
+    0%   { --val: 84; }
+    20%  { --val: 86; }
+    40%  { --val: 83; }
+    60%  { --val: 85; }
+    68%  { --val: 87; }   /* nudge after accept */
+    90%  { --val: 86; }
+    100% { --val: 84; }
+  }
+  @keyframes dialA {
+    0%   { --val: 85; }
+    20%  { --val: 84; }
+    40%  { --val: 86; }
+    60%  { --val: 85; }
+    70%  { --val: 89; }   /* big nudge — chosen variant was Akhil-voice */
+    88%  { --val: 89; }   /* hold so it reads on screen */
+    100% { --val: 85; }
+  }
+  /* Animate custom property */
+  @property --val {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 85;
+  }
+  .fidelity-meta {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .fidelity-meta .who {
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .fidelity-meta .who.vishal { color: var(--vishal); }
+  .fidelity-meta .who.akhil  { color: var(--akhil); }
+  .fidelity-meta .label {
+    font-size: 11px;
+    color: var(--text-2);
+  }
+  .fidelity-num {
+    font-variant-numeric: tabular-nums;
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  /* +4 fidelity flyer: spawns at v2 variant, arcs into akhil dial (JS sets --fly-dx/dy). */
+  .fidelity-flyer {
+    position: absolute;
+    left: 60%;
+    bottom: 6px;
+    font-family: var(--code);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--akhil);
+    background: #1a0d12;
+    border: 1px solid var(--akhil);
+    border-radius: 999px;
+    padding: 2px 9px;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 25;
+    white-space: nowrap;
+    will-change: transform, opacity;
+    animation: fidelityFly 16s ease-in-out infinite;
+  }
+  .fidelity-flyer .arrow { color: var(--text-muted); margin: 0 3px; }
+  .fidelity-flyer .who { color: var(--akhil); }
+  @keyframes fidelityFly {
+    0%, 63%   { opacity: 0; transform: translate(0, 0) scale(0.7); }
+    65%       { opacity: 1; transform: translate(0, -4px) scale(1); box-shadow: 0 0 14px #ff8aa899; }
+    72%       { opacity: 1; transform: translate(calc(var(--fly-dx) * 0.7), calc(var(--fly-dy) * 0.7)) scale(0.95); box-shadow: 0 0 10px #ff8aa866; }
+    78%       { opacity: 0.6; transform: translate(var(--fly-dx), var(--fly-dy)) scale(0.55); }
+    80%, 100% { opacity: 0; transform: translate(var(--fly-dx), var(--fly-dy)) scale(0.3); }
+  }
+  .fidelity-flyer { --fly-dx: 360px; --fly-dy: -140px; }
+
+  /* Akhil dial receives the flyer — brief halo + scale around 78-82% */
+  .fidelity-dial.akhil {
+    transition: transform 200ms ease;
+  }
+  .fidelity-dial.akhil::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 2px solid var(--akhil);
+    opacity: 0;
+    pointer-events: none;
+    animation: dialHalo 16s ease-in-out infinite;
+  }
+  @keyframes dialHalo {
+    0%, 76%   { opacity: 0; transform: scale(0.85); }
+    79%       { opacity: 0.9; transform: scale(1.0); box-shadow: 0 0 18px #ff8aa899; }
+    84%       { opacity: 0.4; transform: scale(1.18); }
+    88%, 100% { opacity: 0; transform: scale(1.25); }
+  }
+
+  /* ---------- Voice sampler rotation ---------- */
+  .voice-sample.rotate-out {
+    animation: sampleOut 16s ease-in-out infinite;
+  }
+  .voice-sample.rotate-in {
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-left-width: 0;
+    animation: sampleIn 16s ease-in-out infinite;
+  }
+  @keyframes sampleOut {
+    0%, 88%  { opacity: 1; max-height: 200px; }
+    92%, 100%{ opacity: 0; max-height: 0; margin-bottom: 0; padding: 0; border-left-width: 0; }
+  }
+  @keyframes sampleIn {
+    0%, 90%  { opacity: 0; max-height: 0; margin-bottom: 0; padding: 0; border-left-width: 0; }
+    95%, 100%{ opacity: 1; max-height: 200px; margin-bottom: 10px; padding: 8px 10px; border-left-width: 2px; }
+  }
+
+  .harness-strip { overflow: visible; white-space: nowrap; min-width: 0; position: relative; }
+  .harness-strip > * { flex-shrink: 0; }
+  .harness-strip .pip { margin-left: auto; padding-left: 8px; }
+
+  /* Intent pill: cycles drafting → framing-stuck → accepting → drafting per 16s cycle. */
+  .intent-pill {
+    display: inline-flex;
+    align-items: center;
+    position: relative;
+    margin-left: 8px;
+    padding: 2px 8px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+    overflow: hidden;
+    min-width: 200px;
+    white-space: nowrap;
+  }
+  .intent-pill .ip {
+    position: absolute;
+    left: 8px; right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0;
+  }
+  .intent-pill .ip b { color: var(--text-2); font-weight: 500; }
+  .intent-pill .ip.s1 { animation: ipS1 16s ease-in-out infinite; }
+  .intent-pill .ip.s2 { animation: ipS2 16s ease-in-out infinite; color: var(--warn); }
+  .intent-pill .ip.s2 b { color: var(--warn); }
+  .intent-pill .ip.s3 { animation: ipS3 16s ease-in-out infinite; color: var(--akhil); }
+  .intent-pill .ip.s3 b { color: var(--akhil); }
+  .intent-pill .ip.s4 { animation: ipS4 16s ease-in-out infinite; }
+  @keyframes ipS1 {
+    0%, 20%   { opacity: 1; }
+    23%, 78%  { opacity: 0; }
+    82%, 100% { opacity: 1; }
+  }
+  @keyframes ipS2 {
+    0%, 22%   { opacity: 0; }
+    25%, 60%  { opacity: 1; }
+    63%, 100% { opacity: 0; }
+  }
+  @keyframes ipS3 {
+    0%, 62%   { opacity: 0; }
+    65%, 76%  { opacity: 1; }
+    79%, 100% { opacity: 0; }
+  }
+  @keyframes ipS4 {
+    0%, 78%   { opacity: 0; }
+    82%, 100% { opacity: 1; }
+  }
+  .intent-pill .pip-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    margin-right: 6px;
+    flex-shrink: 0;
+    animation: intentDot 16s ease-in-out infinite;
+  }
+  @keyframes intentDot {
+    0%, 22%   { background: var(--text-muted); box-shadow: none; }
+    25%, 60%  { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+    65%, 76%  { background: var(--akhil); box-shadow: 0 0 6px var(--akhil); }
+    82%, 100% { background: var(--text-muted); box-shadow: none; }
+  }
+
+  /* Architect-decided toast: fades in at stall detection (~22-32% of cycle). */
+  .architect-toast {
+    position: absolute;
+    top: calc(100% + 56px);
+    right: 24px;
+    z-index: 30;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: linear-gradient(90deg, #14110a, var(--panel));
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    font-family: var(--code);
+    font-size: 10.5px;
+    color: var(--accent);
+    letter-spacing: 0.02em;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.5), 0 0 0 1px var(--accent-soft);
+    opacity: 0;
+    pointer-events: none;
+    animation: toastCycle 16s ease-in-out infinite;
+  }
+  .architect-toast .pip-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .architect-toast b { color: var(--warn); font-weight: 500; }
+  .architect-toast .arrow { color: var(--text-muted); margin: 0 2px; }
+  @keyframes toastCycle {
+    0%, 21%    { opacity: 0; transform: translateY(-4px); }
+    24%, 33%   { opacity: 1; transform: translateY(0); }
+    38%, 100%  { opacity: 0; transform: translateY(-4px); }
+  }
+
+  /* Stall window: voice-sampler demotes, brainstorm-pad slides in beneath; reverses on accept. */
+  .voice-sampler-block { animation: samplerDemote 16s ease-in-out infinite; transform-origin: top left; }
+  @keyframes samplerDemote {
+    0%, 20%   { opacity: 1; transform: scale(1); filter: none; }
+    26%, 60%  { opacity: 0.55; transform: scale(0.96); filter: saturate(0.7); }
+    66%, 100% { opacity: 1; transform: scale(1); filter: none; }
+  }
+  .voice-sampler-header { animation: samplerHdr 16s ease-in-out infinite; }
+  @keyframes samplerHdr {
+    0%, 20%   { color: var(--text-muted); }
+    26%, 60%  { color: #5c5c66; }
+    66%, 100% { color: var(--text-muted); }
+  }
+
+  .brainstorm-pad {
+    margin-top: 12px;
+    padding: 0 10px;
+    background: linear-gradient(180deg, #0f1614 0%, var(--panel-2) 100%);
+    border: 1px dashed var(--accent);
+    border-radius: var(--r);
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    animation: padCycle 16s ease-in-out infinite;
+  }
+  @keyframes padCycle {
+    0%, 22%   { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; margin-top: 0; }
+    27%, 60%  { max-height: 260px; opacity: 1; padding-top: 10px; padding-bottom: 10px; margin-top: 12px; }
+    66%, 100% { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; margin-top: 0; }
+  }
+  .brainstorm-pad .bp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--code);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .brainstorm-pad .bp-header .ephemeral {
+    color: var(--text-muted);
+    text-transform: none;
+    letter-spacing: 0.02em;
+    font-size: 9.5px;
+  }
+  .brainstorm-pad .angle {
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    background: #0a0e0d;
+    border-left: 2px solid var(--border-soft);
+    border-radius: 3px;
+    font-size: 10.5px;
+    color: var(--text-2);
+    line-height: 1.4;
+  }
+  .brainstorm-pad .angle:last-child { margin-bottom: 0; }
+  .brainstorm-pad .angle .lens {
+    display: block;
+    font-family: var(--code);
+    font-size: 9.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 3px;
+  }
+  .brainstorm-pad .angle.tech    { border-left-color: var(--vishal); }
+  .brainstorm-pad .angle.tech .lens    { color: var(--vishal); }
+  .brainstorm-pad .angle.product { border-left-color: var(--accent); }
+  .brainstorm-pad .angle.product .lens { color: var(--accent); }
+  .brainstorm-pad .angle.philo   { border-left-color: var(--akhil); }
+  .brainstorm-pad .angle.philo .lens   { color: var(--akhil); }
+
+  /* ---------- Caption near revision-variant ---------- */
+  .architect-caption {
+    margin: 6px 0 10px;
+    padding-left: 10px;
+    border-left: 1px solid var(--border-soft);
+    font-family: var(--serif, Source Serif Pro, serif);
+    font-style: italic;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    line-height: 1.45;
+    opacity: 0;
+    animation: captionCycle 16s ease-in-out infinite;
+  }
+  .architect-caption b { color: var(--text-2); font-weight: 400; font-style: normal; font-family: var(--code); font-size: 10.5px; }
+  @keyframes captionCycle {
+    0%, 28%   { opacity: 0; transform: translateY(2px); }
+    34%, 78%  { opacity: 1; transform: translateY(0); }
+    82%, 100% { opacity: 0; transform: translateY(-2px); }
+  }
+
+  @media (max-width: 1320px) {
+    .lifecycle-ribbon { margin-left: 12px; }
+    .lifecycle-ribbon .lcr-num { display: none; }
+    .lifecycle-ribbon .lcr-line { width: 10px; }
+  }
+
+  .advance-pill { right: 16px; bottom: 56px; }
+  .yjs-ops { font-variant-numeric: tabular-nums; }
+
+  /* Reduced motion: rest on the variant-accepted / density-up state. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      animation-fill-mode: forwards !important;
+      transition-duration: 0.001ms !important;
+    }
+    .typed-line [data-typewriter] { white-space: normal; }
+    .editor-cursor { background: var(--vishal); box-shadow: 0 0 4px var(--vishal); }
+    .swap-target .placeholder { opacity: 0; }
+    .swap-target .accepted { opacity: 1; }
+    .stall-banner, .grammar-callout, .variant, .claim-pip { opacity: 0; }
+    .density-fill { width: 86%; background: var(--accent); }
+    .intent-pill .ip.s1 { opacity: 1; }
+    .intent-pill .ip.s2, .intent-pill .ip.s3, .intent-pill .ip.s4 { opacity: 0; }
+    .architect-toast { opacity: 0; }
+    .brainstorm-pad { max-height: 0; opacity: 0; padding: 0; margin: 0; }
+    .voice-sampler-block { opacity: 1; transform: none; filter: none; }
+    .architect-caption { opacity: 1; }
+  }
+
+  .framing-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 14px 6px;
+    font-family: var(--code);
+    font-size: 9.5px;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    background: var(--panel);
+    border-bottom: 1px solid var(--border-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .framing-note .fn-dim { color: var(--text-muted); opacity: 0.55; }
+  .framing-note a {
+    color: var(--accent-2);
+    text-decoration: none;
+    border-bottom: 1px dotted currentColor;
+  }
+  .framing-note a:hover { opacity: 0.85; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span>doclayer</div>
+    <div class="crumb">/ <b>meta-harnesses</b> / drafting</div>
+    <div class="right">
+      <span class="muted">scenario 03: drafting</span>
+      <div class="avatar akhil">A</div>
+      <div class="avatar">V</div>
+    </div>
+  </div>
+
+  <div class="harness-strip">
+    <span class="phase draft">DRAFT</span>
+    <span class="chain">chain · <b>DOC_DRAFT/v1</b></span>
+    <span class="intent-pill" aria-label="harness intent">
+      <span class="pip-dot"></span>
+      <span class="ip s1">intent · drafting · <b>§3 closing</b></span>
+      <span class="ip s2">intent · framing-stuck · <b>brainstorm</b></span>
+      <span class="ip s3">intent · accepting · <b>variant-2 (akhil-voice)</b></span>
+      <span class="ip s4">intent · drafting · <b>§3 closing</b></span>
+    </span>
+    <ol class="lifecycle-ribbon" aria-label="document lifecycle">
+      <li class="lcr-step done"><span class="lcr-num">01</span>Bootstrap</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step done"><span class="lcr-num">02</span>Plan</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step current"><span class="lcr-num">03</span>Draft</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step"><span class="lcr-num">04</span>Review</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step"><span class="lcr-num">05</span>Publish</li>
+      <span class="lcr-line"></span>
+      <li class="lcr-step"><span class="lcr-num">06</span>Reader</li>
+    </ol>
+    <span class="pip">architect: idle</span>
+    <div class="architect-toast" role="status" aria-live="polite">
+      <span class="pip-dot"></span>
+      <span>architect &middot; detected: <b>framing-stuck</b><span class="arrow"> &rarr; </span>reshaping right rail for <b>brainstorm</b></span>
+    </div>
+  </div>
+
+  <div class="framing-note">single-author view <span class="fn-dim">·</span> see <a href="07-multiplayer.html">scenario 07 for the multiplayer harness →</a></div>
+
+  <div class="phase-tabs">
+    <div class="phase-tab"><span class="step">01</span>Plan</div>
+    <div class="phase-tab active"><span class="step">02</span>Draft</div>
+    <div class="phase-tab"><span class="step">03</span>Review</div>
+    <div class="phase-tab"><span class="step">04</span>Publish</div>
+  </div>
+
+  <div class="workspace" style="grid-template-columns: 1fr 360px;">
+    <!-- Editor (full bleed) -->
+    <div class="panel">
+      <div class="panel-header">Document — <span class="muted">draft 1 · 2,840 words · autosaved 2s ago</span></div>
+      <div class="editor" style="padding: 48px 96px;">
+        <h1 class="fade-up d-1">Meta-harnesses</h1>
+        <div class="subtitle fade-up d-2">A series, target: AI engineers and builders.</div>
+
+        <h2 class="fade-up d-2">3. Building meta-harnesses</h2>
+        <p class="fade-up d-3">If the harness is the controller, the meta-harness is the controller that authors controllers. It evolves the harness as the task and the user evolve. Two open questions follow: how do you express the search space, and how do you stay within the user's prior?</p>
+
+        <p class="fade-up d-4">The search space isn't free; every harness atom is typed and every mutation is a delta against a manifest the Architect has to emit, which means the model is composing inside a grammar instead of producing raw markup it might or might not get right. That's not the same problem as the one most UI-generating models are trying to solve, and the framing change matters more than the architectural one — once you're picking atoms out of a kit the failure modes look like under-coverage of the kit, not hallucination.</p>
+
+        <p class="fade-up d-5">
+          <span class="typed-line"><span data-typewriter data-tw-text="Staying within the user's prior is the harder half. The harness must remember what was pinned, dismissed, &amp; how you actually write." data-tw-loop="16000" data-tw-speed="0.55"></span></span><span class="editor-cursor"></span>
+        </p>
+
+        <!-- Swap target: placeholder paragraph is replaced when a variant is accepted -->
+        <p class="fade-up d-5 swap-target" style="position:relative;min-height: 9.6em;">
+          <span class="placeholder">Draft a continuation that ties voice fidelity back to the meta-harness claim&hellip;</span>
+          <span class="accepted">I feel like voice fidelity isn't really a feature here, it's the constraint the whole thing has to bend around — because if the harness is the intermediary to a world model for the user, and the world model has to be in their voice or the intermediation doesn't hold, then every other knob (density, claim count, lesson approval) is downstream of whether the draft actually sounds like you would've said it; and that's harder than it looks since the model that's supposed to preserve the voice is also the thing perturbing it every time you accept a suggestion.</span>
+          <!-- Claim pips fly from here toward the density meter -->
+          <span class="claim-pip p1">+claim</span>
+          <span class="claim-pip p2">+claim</span>
+          <!-- +4 fidelity pill — flies from accepted paragraph to akhil dial in right rail -->
+          <span class="fidelity-flyer">+4 fidelity <span class="arrow">→</span><span class="who">akhil</span></span>
+        </p>
+
+        <!-- Stall banner -> variants -->
+        <div class="stall-banner">
+          <span class="pulse"></span>
+          <span>still for 18s — architect drafted 3 continuations in 2 voices.</span>
+          <span style="margin-left:auto;color:var(--text-muted);">esc to dismiss</span>
+        </div>
+
+        <div class="grammar-callout">
+          <b>revision-variant</b> &middot; 3 candidates &middot; expires in <span class="ttl">20s</span>
+        </div>
+
+        <div class="architect-caption">
+          the architect didn't pick <b>"drafting."</b> it picked <b>"drafting → framing-stuck → brainstorm → return."</b>
+        </div>
+
+        <div class="variant-stack">
+          <div class="variant v1">
+            <div class="label" style="color: var(--vishal);">your voice · expansive</div>
+            Yeah and the recursive part is what gets me — like, you write a paragraph, the harness fits a voice model on the last few, then the next time you stall it drafts in that same voice, which it learned from you stalling on a paragraph that was already partly drafted by the previous version of itself. Run that loop a year and tbh I'm not sure whose voice it even is anymore; probably some average that drifts toward whichever one of us last approved a lesson.
+          </div>
+          <div class="variant v2">
+            <div class="label" style="color: var(--akhil);">akhil's voice · denser</div>
+            I feel like voice fidelity isn't really a feature here, it's the constraint the whole thing has to bend around — because if the harness is the intermediary to a world model for the user, and the world model has to be in their voice or the intermediation doesn't hold, then every other knob (density, claim count, lesson approval) is downstream of whether the draft actually sounds like you would've said it; and that's harder than it looks since the model that's supposed to preserve the voice is also the thing perturbing it every time you accept a suggestion.
+          </div>
+          <div class="variant v3">
+            <div class="label">claim-first</div>
+            Voice is the wedge. Mirror the writer's compression or the doc averages out. Every meta-harness that skips this collapses into the same flat tone.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right rail: voice sampler + density -->
+    <div class="panel slide-left">
+      <div class="panel-header">Drafting tools</div>
+      <div class="panel-body">
+        <div class="voice-sampler-block">
+          <div class="voice-sampler-header" style="font-family:var(--code);font-size:10px;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Voice sampler · last 3 paragraphs</div>
+
+          <div class="voice-sample akhil rotate-in">
+            <span class="who">akhil · just now</span>
+            "voice fidelity isn't really a feature, it's the constraint the whole thing has to bend around — every other knob is downstream of whether the draft sounds like you would've said it."
+          </div>
+          <div class="voice-sample">
+            <span class="who">vishal · 2 min ago</span>
+            "yeah I keep coming back to the multiplayer thing — like the harness has to fit a different voice model per subgroup, and the eval for that is basically just whether the lesson stuck the next time someone stalled."
+          </div>
+          <div class="voice-sample akhil">
+            <span class="who">akhil · 5 min ago</span>
+            "I feel like it's the intermediary to world models for businesses."
+          </div>
+          <div class="voice-sample rotate-out">
+            <span class="who">vishal · 8 min ago</span>
+            "Yeah exactly also coming across this analogy. That and diffusion models."
+          </div>
+        </div>
+
+        <!-- Ephemeral brainstorm pad: slides in during the stall, slides out on accept. -->
+        <div class="brainstorm-pad" aria-label="brainstorm scratchpad">
+          <div class="bp-header">
+            <span>brainstorm-scratchpad</span>
+            <span class="ephemeral">ephemeral &middot; expires on accept</span>
+          </div>
+          <div class="angle tech">
+            <span class="lens">technical lens</span>
+            voice fidelity is a control problem — the model that preserves the prior is also the perturbation source; need a separation between scoring and generation.
+          </div>
+          <div class="angle product">
+            <span class="lens">product lens</span>
+            voice is the wedge against "AI-flattened" docs. mirror the writer or every harness-authored page averages out.
+          </div>
+          <div class="angle philo">
+            <span class="lens">philosophical lens</span>
+            if the harness mediates a world model, the world model has to sound like you — otherwise you're reading someone else's draft of yourself.
+          </div>
+        </div>
+
+        <div style="margin-top:24px;">
+          <div class="density">
+            <div class="label">
+              <span>density meter · this section</span>
+              <span class="density-stat-num" id="claims-num">target 3 / para</span>
+            </div>
+            <div class="bar"><div class="fill density-fill"></div></div>
+            <div class="stat">
+              currently <span class="val" data-v="2.4">2.4</span> claims/para &middot; trending up
+            </div>
+          </div>
+        </div>
+
+        <div class="fidelity-block">
+          <div class="label" style="font-family:var(--code);font-size:10px;color:var(--text-muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;display:flex;justify-content:space-between;">
+            <span>voice fidelity</span>
+            <span class="fidelity-num">live</span>
+          </div>
+          <div class="fidelity-row">
+            <div class="fidelity-dial vishal"><span class="pct" id="pct-v">85%</span></div>
+            <div class="fidelity-meta">
+              <span class="who vishal">vishal</span>
+              <span class="label">expansive &middot; question-tail</span>
+            </div>
+          </div>
+          <div class="fidelity-row">
+            <div class="fidelity-dial akhil"><span class="pct" id="pct-a">85%</span></div>
+            <div class="fidelity-meta">
+              <span class="who akhil">akhil</span>
+              <span class="label">claim-first &middot; dense</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:24px;font-family:var(--code);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Active lessons</div>
+
+        <div style="padding:10px 12px;background:var(--panel-2);border-radius:var(--r);border:1px solid var(--border-soft);font-size:11px;color:var(--text-2);margin-bottom:8px;">
+          <span style="color:var(--akhil);font-family:var(--code);font-size:10px;">akhil · approved</span><br>
+          claim-first paragraphs. lead with the assertion.
+        </div>
+        <div style="padding:10px 12px;background:var(--panel-2);border-radius:var(--r);border:1px solid var(--border-soft);font-size:11px;color:var(--text-2);margin-bottom:8px;">
+          <span style="color:var(--vishal);font-family:var(--code);font-size:10px;">vishal · approved</span><br>
+          end sections with the question that opens the next.
+        </div>
+        <div style="padding:10px 12px;background:var(--panel-2);border-radius:var(--r);border:1px dashed var(--accent);font-size:11px;color:var(--text-2);">
+          <span style="color:var(--accent);font-family:var(--code);font-size:10px;">candidate · curator proposed</span><br>
+          recursive systems → concrete loop first. don't tighten when long form is the claim. (vishal accepted v2 over v3 twice this week. ?same rule)
+          <div style="margin-top:8px;display:flex;gap:6px;">
+            <span style="font-family:var(--code);font-size:10px;padding:2px 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent);">approve</span>
+            <span style="font-family:var(--code);font-size:10px;padding:2px 6px;border-radius:4px;background:var(--panel);color:var(--text-muted);">dismiss</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span class="live">2 authors live</span>
+    <span>phase: <b style="color:var(--accent)">draft</b></span>
+    <span>chain: <b>DOC_DRAFT/v1</b></span>
+    <span>architect: <b>idle</b></span>
+    <span title="yjs CRDT — ops merged this session" style="display:inline-flex;align-items:center;gap:5px;">
+      <span style="width:5px;height:5px;border-radius:50%;background:var(--accent-2);box-shadow:0 0 5px var(--accent-2);"></span>
+      yjs · <b class="yjs-ops" style="color:var(--accent-2);">412</b> ops merged
+    </span>
+    <span style="margin-left:auto;">stall-detector armed · 30s</span>
+  </div>
+</div>
+
+<div class="scenario-nav">
+  <a href="02-planning.html">← planning</a>
+  <a href="index.html">all scenarios</a>
+  <a href="04-review.html">next: review →</a>
+</div>
+
+<a class="advance-pill" href="04-review.html">next: review →</a>
+
+<script>
+  // Drive live numerics in sync with the 16s CSS cycle.
+  (function () {
+    var CYCLE = 16000;
+    var start = performance.now();
+    var claimsEl = document.querySelector('.density .stat .val');
+    var ttlEl = document.querySelector('.grammar-callout .ttl');
+    var pctV = document.getElementById('pct-v');
+    var pctA = document.getElementById('pct-a');
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    function frame(now) {
+      var t = ((now - start) % CYCLE) / CYCLE; // 0..1
+
+      // Claims/para: 1.6 -> 3.1 across the cycle, with a settle at the end
+      var claims;
+      if (t < 0.66) claims = lerp(1.6, 3.1, t / 0.66);
+      else if (t < 0.92) claims = 3.1;
+      else claims = lerp(3.1, 1.6, (t - 0.92) / 0.08);
+      if (claimsEl) claimsEl.textContent = claims.toFixed(1);
+
+      // TTL: 20 -> 0 during the variant window (compressed: 22% to 62% of cycle)
+      if (ttlEl) {
+        if (t < 0.22) ttlEl.textContent = '20s';
+        else if (t < 0.62) {
+          var ttl = Math.max(0, Math.round(20 - ((t - 0.22) / 0.40) * 20));
+          ttlEl.textContent = ttl + 's';
+        } else ttlEl.textContent = '—';
+      }
+
+      // Voice fidelity %s — small wobble + a bigger nudge after accept (~70%)
+      var baseV = 84 + Math.sin(t * Math.PI * 2) * 1.2;
+      var baseA = 85 + Math.cos(t * Math.PI * 2) * 1.0;
+      if (t > 0.66 && t < 0.90) {
+        baseA += 4 * (1 - Math.abs((t - 0.74) / 0.08));
+        baseV += 1.5 * (1 - Math.abs((t - 0.74) / 0.08));
+      }
+      if (pctV) pctV.textContent = Math.round(baseV) + '%';
+      if (pctA) pctA.textContent = Math.round(baseA) + '%';
+
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  })();
+
+  // yjs ops counter — small increments every 1.2–2.4s.
+  (function () {
+    var el = document.querySelector('.yjs-ops');
+    if (!el) return;
+    var ops = 412;
+    function tick() {
+      ops += 1 + Math.floor(Math.random() * 3);
+      el.textContent = ops.toLocaleString();
+      setTimeout(tick, 1200 + Math.random() * 1200);
+    }
+    setTimeout(tick, 1400);
+  })();
+
+  // Compute container-relative trajectories for claim pips and fidelity flyer.
+  (function () {
+    var pips = document.querySelectorAll('.claim-pip');
+    var flyer = document.querySelector('.fidelity-flyer');
+    var densityFill = document.querySelector('.density-fill');
+    var akhilDial = document.querySelector('.fidelity-dial.akhil');
+
+    function rectCenter(el) {
+      var r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }
+
+    function recompute() {
+      if (densityFill) {
+        var dst = rectCenter(densityFill);
+        pips.forEach(function (pip) {
+          var src = rectCenter(pip);
+          pip.style.setProperty('--pip-dx', Math.round(dst.x - src.x) + 'px');
+          pip.style.setProperty('--pip-dy', Math.round(dst.y - src.y) + 'px');
+        });
+      }
+      if (flyer && akhilDial) {
+        var fSrc = rectCenter(flyer);
+        var fDst = rectCenter(akhilDial);
+        flyer.style.setProperty('--fly-dx', Math.round(fDst.x - fSrc.x) + 'px');
+        flyer.style.setProperty('--fly-dy', Math.round(fDst.y - fSrc.y) + 'px');
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', recompute);
+    } else {
+      recompute();
+    }
+    window.addEventListener('load', recompute);
+    window.addEventListener('resize', recompute);
+  })();
+</script>
+<script>
+  /* ---------- Reusable typewriter engine ----------
+     Usage: <span data-typewriter data-tw-text="..." [data-tw-delay="0"] [data-tw-loop="0"] [data-tw-speed="1"]></span>
+     - Variable per-char delay (35-75ms base)
+     - Pauses after punctuation, occasional micro-pauses on spaces, rare longer thought pauses
+     - Adds .tw-typing while active, .tw-done on completion; dispatches 'tw:done'
+     - Reduced-motion: locks to fully-typed state
+  */
+  (function () {
+    if (window.__twEngine) return; window.__twEngine = true;
+    var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function rng(a, b) { return a + Math.random() * (b - a); }
+    function charDelay(ch) {
+      var d = rng(35, 75);
+      if (ch === '.' || ch === '?' || ch === '!') d += rng(200, 450);
+      else if (ch === ',' || ch === ';' || ch === ':') d += rng(150, 280);
+      else if (ch === '\n' || ch === '—') d += rng(300, 500);
+      else if (ch === ' ') {
+        if (Math.random() < 0.15) d += rng(80, 150);
+        if (Math.random() < 0.02) d += rng(600, 900);
+      }
+      return d;
+    }
+    function mount(el) {
+      var text = el.getAttribute('data-tw-text') || el.textContent || '';
+      el.setAttribute('data-tw-text', text);
+      var startDelay = parseInt(el.getAttribute('data-tw-delay') || '0', 10);
+      var loopMs = parseInt(el.getAttribute('data-tw-loop') || '0', 10);
+      var speedMul = parseFloat(el.getAttribute('data-tw-speed') || '1');
+      if (reduced) { el.textContent = text; el.classList.add('tw-done'); return; }
+      el.textContent = '';
+      function run() {
+        el.textContent = '';
+        el.classList.remove('tw-done');
+        el.classList.add('tw-typing');
+        var i = 0;
+        function step() {
+          if (i >= text.length) {
+            el.classList.remove('tw-typing');
+            el.classList.add('tw-done');
+            try { el.dispatchEvent(new CustomEvent('tw:done', { bubbles: true })); } catch (e) {}
+            return;
+          }
+          var ch = text.charAt(i);
+          el.textContent += ch;
+          i++;
+          setTimeout(step, charDelay(ch) * speedMul);
+        }
+        step();
+      }
+      setTimeout(function tick() {
+        run();
+        if (loopMs > 0) setTimeout(tick, loopMs);
+      }, startDelay);
+    }
+    function init() {
+      document.querySelectorAll('[data-typewriter]').forEach(mount);
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  })();
+</script>
+
+<button class="guide-btn" id="guideBtn">guide</button>
+<div class="scenario-guide-scrim" id="guideScrim"></div>
+<aside class="scenario-guide" id="guidePanel" aria-hidden="true">
+  <div class="sg-head">
+    <div class="sg-title">guide &middot; <b>scenario 03</b></div>
+    <button class="sg-close" id="guideClose" aria-label="close">&times;</button>
+  </div>
+  <div class="sg-body">
+    <p class="sg-tagline">Typing live, agents fire inline, the harness cycles intent state.</p>
+    <div class="sg-beat"><span class="sg-t">0&ndash;6s &middot; typing live</span><p>The cursor types into the editor. The harness-strip pip reads &ldquo;composing&rdquo;. The right rail is quiet &mdash; the writer is in flow.</p></div>
+    <div class="sg-beat"><span class="sg-t">6&ndash;10s &middot; AI agents fire inline</span><p>Research and adversarial agents augment the prose in place: citation badges attach to claims; a contradiction nudge flags a hedge. Augments are atoms, not popups.</p></div>
+    <div class="sg-beat"><span class="sg-t">10&ndash;16s &middot; harness intent state cycles</span><p>The cursor stalls. The harness shifts intent state from &ldquo;compose&rdquo; to &ldquo;revise&rdquo;. The right rail expands; three revision variants surface for the stalled paragraph.</p></div>
+    <div class="sg-beat"><span class="sg-t">16&ndash;20s &middot; stall &rarr; variant &rarr; accept</span><p>A variant is accepted. The paragraph swaps in place. The voice sampler updates Akhil&rsquo;s density meter to reflect the new tightness.</p></div>
+    <div class="sg-beat"><span class="sg-t">20&ndash;22s &middot; voice fidelity nudge</span><p>Density has drifted toward Vishal&rsquo;s voice. A tiny chip nudges to tighten; one click accepts. The lesson commits to memory.</p></div>
+    <div class="sg-proof"><span class="lbl">what this proves</span>The harness has intent state. Same text, different surface for write vs. revise &mdash; and it switches without a mode button.</div>
+  </div>
+  <div class="sg-foot"><a href="guide.html">full walkthrough</a><span>03 / drafting</span></div>
+</aside>
+<script src="guide.js"></script>
+</body>
+</html>
