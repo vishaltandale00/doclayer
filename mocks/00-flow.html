@@ -2787,8 +2787,15 @@
   let startTime = performance.now();
   let formStarted = false;
 
+  let pauseAccum = 0, pauseStart = 0;
   function tick() {
-    const elapsed = (performance.now() - startTime) / 1000;
+    if (window.__doclayerPaused) {
+      if (!pauseStart) pauseStart = performance.now();
+      setTimeout(tick, 100);
+      return;
+    }
+    if (pauseStart) { pauseAccum += performance.now() - pauseStart; pauseStart = 0; }
+    const elapsed = (performance.now() - startTime - pauseAccum) / 1000;
     const cycleT = elapsed % (TOTAL + REST);
 
     // Update timer (clamped to TOTAL during rest)
@@ -2969,7 +2976,9 @@
     </div>
   </div>
 </aside>
+<script src="identity.js" defer></script>
 <script src="feedback.js" defer></script>
+<script src="comments.js" defer></script>
 
 </body>
 </html>

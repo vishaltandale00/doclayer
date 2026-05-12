@@ -1416,6 +1416,7 @@
     if (!elV || !elA) return;
     var ops = 412;
     function tick() {
+      if (window.__doclayerPaused) { setTimeout(tick, 100); return; }
       ops += 1 + Math.floor(Math.random() * 3);
       var s = ops.toLocaleString();
       elV.textContent = s;
@@ -1600,7 +1601,9 @@
     </div>
   </div>
 </aside>
+<script src="identity.js" defer></script>
 <script src="feedback.js" defer></script>
+<script src="comments.js" defer></script>
 
 </body>
 </html>

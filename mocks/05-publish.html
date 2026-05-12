@@ -857,6 +857,7 @@
     const timings = [1000, 1400, 1600, 1600, 700];
     let cursor = 0;
     function tick() {
+      if (window.__doclayerPaused) { setTimeout(tick, 100); return; }
       if (cursor > 0) {
         const prev = steps[cursor - 1];
         prev.classList.remove('active');
@@ -976,7 +977,9 @@
     </div>
   </div>
 </aside>
+<script src="identity.js" defer></script>
 <script src="feedback.js" defer></script>
+<script src="comments.js" defer></script>
 
 </body>
 </html>
