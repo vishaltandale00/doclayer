@@ -1243,32 +1243,6 @@ body.fb-open .stage { filter: saturate(0.72) brightness(0.78); transition: filte
   min-height: 0;
 }
 
-/* Role picker pills */
-.fb-roles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-.fb-role {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-family: var(--code);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  cursor: pointer;
-  transition: all 140ms var(--ease);
-}
-.fb-role:hover { color: var(--text-2); border-color: var(--text-muted); }
-.fb-role.on {
-  color: var(--third);
-  background: var(--third-soft);
-  border-color: var(--third-border);
-}
-
 /* Textarea */
 .fb-text {
   width: 100%;
@@ -1334,16 +1308,6 @@ body.fb-open .stage { filter: saturate(0.72) brightness(0.78); transition: filte
   color: var(--text-muted);
   cursor: not-allowed;
 }
-.fb-disclaimer {
-  margin-left: auto;
-  font-family: var(--code);
-  font-size: 9px;
-  color: var(--text-muted);
-  letter-spacing: 0.02em;
-  text-align: right;
-  line-height: 1.4;
-}
-
 /* --- Drafting state (shown while awaiting response) --- */
 .fb-drafting {
   display: none;
@@ -1535,6 +1499,31 @@ body.fb-open .stage { filter: saturate(0.72) brightness(0.78); transition: filte
   color: var(--warn); font: 10px var(--code); cursor: pointer;
 }
 
+/* --- Universal submit→architect-pip particle ---
+   Spawned at the submit button's center, flies a gentle arc to the
+   architect pip on every scenario (works without an orchestration rail).
+   Single subtle dot, no trail. */
+.fb-particle {
+  position: fixed;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--third);
+  box-shadow: 0 0 10px var(--third), 0 0 4px var(--third);
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: fbCommentFly 700ms cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards;
+}
+@keyframes fbCommentFly {
+  0%   { opacity: 0; transform: translate(0, 0) scale(0.5); }
+  14%  { opacity: 1; transform: translate(calc(var(--fb-dx) * 0.14), calc(var(--fb-dy) * 0.14 + var(--fb-arc) * 0.55)) scale(1); }
+  60%  { opacity: 1; transform: translate(calc(var(--fb-dx) * 0.6),  calc(var(--fb-dy) * 0.6  + var(--fb-arc) * 0.85)) scale(1); }
+  88%  { opacity: 1; transform: translate(calc(var(--fb-dx) * 0.92), calc(var(--fb-dy) * 0.92 + var(--fb-arc) * 0.25)) scale(0.9); }
+  100% { opacity: 0; transform: translate(var(--fb-dx),               var(--fb-dy)) scale(0.55); }
+}
+
 /* Architect pip "composing" override while feedback is drafting */
 .pip.fb-drafting-pip::before {
   background: var(--third) !important;
@@ -1545,7 +1534,7 @@ body.fb-open .stage { filter: saturate(0.72) brightness(0.78); transition: filte
 /* --- Reduced motion: skip transitions & typing --- */
 @media (prefers-reduced-motion: reduce) {
   .fb-trigger, .fb-panel, .fb-scrim, .fb-drafting .fb-pulse,
-  .fb-response .fb-resp-body.tw-typing::after, .ev.fire-once {
+  .fb-response .fb-resp-body.tw-typing::after, .ev.fire-once, .fb-particle {
     transition: none !important;
     animation: none !important;
   }

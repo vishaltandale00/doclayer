@@ -40,10 +40,8 @@
   // Optional: scenario-specific embellishments. Missing = silent no-op.
   var gutter     = document.getElementById('gutter');
   var pipEl      = document.querySelector('.harness-strip .pip') || document.getElementById('pip-v');
-  var roleBtns   = panel.querySelectorAll('.fb-role');
   var draftLabel = drafting && drafting.querySelector('span:not(.fb-pulse)');
 
-  var currentRole = 'writer';
   var lastPayload = null;
   var cannedCache = null;
   var stageTimer = null;
@@ -71,16 +69,6 @@
   scrim.addEventListener('click', close);
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && panel.classList.contains('open')) close();
-  });
-
-  // ---- Role pills ----
-  roleBtns.forEach(function (b) {
-    b.addEventListener('click', function () {
-      roleBtns.forEach(function (x) { x.classList.remove('on'); x.setAttribute('aria-checked', 'false'); });
-      b.classList.add('on');
-      b.setAttribute('aria-checked', 'true');
-      currentRole = b.getAttribute('data-role');
-    });
   });
 
   // ---- Textarea / counter / submit-enable ----
@@ -115,7 +103,7 @@
       var ts = when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       html += '<div class="fb-hist-item">'
             +   '<span class="fb-hist-ts">' + ts + '</span>'
-            +   '<span class="fb-hist-you">you (' + escapeHtml(it.role) + '): </span>'
+            +   '<span class="fb-hist-you">you: </span>'
             +   escapeHtml(it.feedback)
             +   '<span class="fb-hist-arch">↳ ' + escapeHtml(it.response) + '</span>'
             + '</div>';
@@ -141,6 +129,34 @@
     setTimeout(function () { if (ev.parentNode) ev.parentNode.removeChild(ev); }, 1800);
   }
 
+  // ---- Universal submit→pip particle: single dot, gentle arc to architect ----
+  // Fires on every scenario that has a .harness-strip .pip (or #pip-v fallback).
+  function fireCommentParticle() {
+    if (REDUCED) return;
+    var pip = document.querySelector('.harness-strip .pip') || document.getElementById('pip-v');
+    if (!pip || !submit) return;
+    var sRect = submit.getBoundingClientRect();
+    var pRect = pip.getBoundingClientRect();
+    if (!sRect.width || !pRect.width) return;
+    var startX = sRect.left + sRect.width / 2;
+    var startY = sRect.top + sRect.height / 2;
+    var endX = pRect.left + pRect.width / 2;
+    var endY = pRect.top + pRect.height / 2;
+    var dx = endX - startX;
+    var dy = endY - startY;
+    // Gentle arc: lift the midpoint by 12% of the travel distance, clamped.
+    var arc = Math.min(60, Math.max(18, Math.hypot(dx, dy) * 0.12));
+    var dot = document.createElement('span');
+    dot.className = 'fb-particle';
+    dot.style.left = (startX - 4) + 'px';
+    dot.style.top  = (startY - 4) + 'px';
+    dot.style.setProperty('--fb-dx', dx + 'px');
+    dot.style.setProperty('--fb-dy', dy + 'px');
+    dot.style.setProperty('--fb-arc', (-arc) + 'px');
+    document.body.appendChild(dot);
+    setTimeout(function () { if (dot.parentNode) dot.parentNode.removeChild(dot); }, 760);
+  }
+
   // ---- Architect pip pulse ----
   function pipDrafting(on) {
     if (!pipEl) return;
@@ -153,9 +169,9 @@
     }
   }
 
-  function startStages(role) {
+  function startStages() {
     if (!draftLabel) return;
-    var s = ['reading your comment…', 'routing to ' + (role==='architect'?"akhil's":"vishal's") + ' queue…', 'drafting response…'], i=0;
+    var s = ['reading your comment…', 'routing your comment…', 'drafting response…'], i=0;
     draftLabel.textContent = s[0];
     stageTimer = setInterval(function(){ if(++i>=s.length){clearInterval(stageTimer);stageTimer=null;return;} draftLabel.textContent=s[i]; }, 600);
   }
@@ -180,7 +196,6 @@
       var q = loadQueue(), item = q.shift(); if (!item) return;
       saveQueue(q);
       text.value = item.payload.feedback;
-      currentRole = item.payload.role;
       refreshCount(); renderQueueBanner(); doSubmit();
     });
   }
@@ -221,7 +236,7 @@
       return j;
     });
   }
-  function pickCanned(feedback, role, canned) {
+  function pickCanned(feedback, canned) {
     var responses = (canned && canned.responses) || [];
     for (var i = 0; i < responses.length; i++) {
       var r = responses[i];
@@ -271,12 +286,13 @@
   function doSubmit() {
     var feedback = text.value.trim();
     if (feedback.length < 3) return;
-    lastPayload = { scenario: SCENARIO, phase: PHASE, role: currentRole, feedback: feedback };
+    lastPayload = { scenario: SCENARIO, phase: PHASE, feedback: feedback };
 
     clearStates();
     drafting.classList.add('on');
     setSubmitting(true);
-    startStages(currentRole);
+    fireCommentParticle();
+    startStages();
     pipDrafting(true);
     fireGutterParticle();
 
@@ -293,7 +309,7 @@
       setTimeout(function () { handleResponse(out); }, minDelay);
     }).catch(function () {
       fetchCanned().then(function (canned) {
-        var pick = pickCanned(lastPayload.feedback, lastPayload.role, canned);
+        var pick = pickCanned(lastPayload.feedback, canned);
         endDrafting();
         renderResponse(pick.response, true, pick.routedTo);
       }).catch(function () {
@@ -313,7 +329,7 @@
     }
     if (out.status === 503 && out.body && out.body.fallback === 'canned') {
       fetchCanned().then(function (canned) {
-        var pick = pickCanned(lastPayload.feedback, lastPayload.role, canned);
+        var pick = pickCanned(lastPayload.feedback, canned);
         renderResponse(pick.response, true, pick.routedTo);
       }).catch(function () {
         setSubmitting(false);
@@ -346,7 +362,6 @@
       pushThread({
         feedback: lastPayload.feedback,
         response: textOut,
-        role: lastPayload.role,
         routedTo: routedTo || null,
         canned: !!isCanned,
         timestamp: Date.now(),
