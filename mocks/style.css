@@ -15,6 +15,10 @@
   --vishal: #6ba0ff;
   --akhil: #ff8aa8;
   --warn: #ffb86b;
+  /* third-writer color: muted purple — sits between vishal blue and akhil pink */
+  --third: #b58acc;
+  --third-soft: #b58acc1a;
+  --third-border: #b58acc55;
   --code: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   --sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --serif: 'Iowan Old Style', 'Charter', 'Source Serif Pro', Georgia, serif;
@@ -1110,4 +1114,421 @@ body:has(.advance-pill) .advance-pill { pointer-events: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   .scenario-guide { transition: none; }
+}
+
+/* ===== Feedback widget (cross-scenario) =====
+   Third-writer "drop a comment" affordance. The trigger pill anchors
+   bottom-right (z-index:60, below scenario-nav at z:100). Clicking opens
+   a modal panel that drafts a live AI response via /api/draft-feedback,
+   with a canned-fallback JSON for offline/demo mode. Color: muted purple
+   (--third), sitting tonally between vishal-blue and akhil-pink. Scenario
+   context is read from data-scenario / data-phase on .fb-panel.
+*/
+
+/* --- Trigger pill: anchored bottom-right, beneath the advance-pill --- */
+.fb-trigger {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 999px;
+  font-family: var(--code);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--third);
+  background: var(--third-soft);
+  border: 1px solid var(--third-border);
+  cursor: pointer;
+  user-select: none;
+  transition: background 160ms var(--ease), transform 160ms var(--ease);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.32);
+}
+.fb-trigger:hover { background: #b58acc26; transform: translateY(-1px); }
+.fb-trigger .fb-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--third);
+  color: #1a1020;
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1;
+}
+.fb-trigger .fb-trig-label b { color: var(--text); font-weight: 500; }
+
+/* --- Scrim --- */
+.fb-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(4,4,6,0.62);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  z-index: 70;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms var(--ease);
+}
+.fb-scrim.open { opacity: 1; pointer-events: auto; }
+
+/* When panel is open: dim the stage to focus attention. */
+body.fb-open .stage { filter: saturate(0.72) brightness(0.78); transition: filter 240ms var(--ease); }
+
+/* --- Panel: small modal overlay, anchored right --- */
+.fb-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  z-index: 80;
+  background: linear-gradient(180deg, #14101a 0%, var(--panel) 100%);
+  border: 1px solid var(--third-border);
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0,0,0,0.6), 0 0 0 1px #b58acc1a;
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+  transition: opacity 220ms var(--ease), transform 220ms var(--ease);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.fb-panel.open { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+/* Header */
+.fb-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  background: linear-gradient(180deg, #1a1322 0%, transparent 100%);
+}
+.fb-head .fb-title {
+  font-family: var(--code);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+  text-transform: lowercase;
+}
+.fb-head .fb-title b { color: var(--third); font-weight: 600; }
+.fb-head .fb-close {
+  margin-left: auto;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.fb-head .fb-close:hover { color: var(--text); border-color: var(--text-muted); }
+
+/* Body scroll container */
+.fb-body {
+  overflow-y: auto;
+  padding: 12px 14px 4px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Role picker pills */
+.fb-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.fb-role {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: var(--code);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 140ms var(--ease);
+}
+.fb-role:hover { color: var(--text-2); border-color: var(--text-muted); }
+.fb-role.on {
+  color: var(--third);
+  background: var(--third-soft);
+  border-color: var(--third-border);
+}
+
+/* Textarea */
+.fb-text {
+  width: 100%;
+  min-height: 92px;
+  max-height: 200px;
+  padding: 10px 12px;
+  background: #0b0a10;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--code);
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  transition: border-color 140ms var(--ease), box-shadow 140ms var(--ease);
+}
+.fb-text::placeholder { color: var(--text-muted); }
+.fb-text:focus { border-color: var(--third-border); box-shadow: 0 0 0 2px #b58acc22; }
+
+.fb-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-family: var(--code);
+  font-size: 9.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.fb-meta .fb-count { font-variant-numeric: tabular-nums; }
+.fb-meta .fb-count.warn { color: var(--warn); }
+
+/* Submit row */
+.fb-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.fb-submit {
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #0a1004;
+  border: 1px solid var(--accent);
+  font-family: var(--code);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: filter 140ms var(--ease);
+}
+.fb-submit:hover:not(:disabled) { filter: brightness(1.08); }
+.fb-submit:disabled {
+  background: var(--panel-2);
+  border-color: var(--border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+.fb-disclaimer {
+  margin-left: auto;
+  font-family: var(--code);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  text-align: right;
+  line-height: 1.4;
+}
+
+/* --- Drafting state (shown while awaiting response) --- */
+.fb-drafting {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  background: #110d18;
+  border: 1px dashed var(--third-border);
+  border-radius: 8px;
+  font-family: var(--code);
+  font-size: 10.5px;
+  color: var(--text-2);
+  letter-spacing: 0.04em;
+}
+.fb-drafting.on { display: flex; }
+.fb-drafting .fb-pulse {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--third);
+  box-shadow: 0 0 8px var(--third);
+  animation: fbPulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes fbPulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50%      { opacity: 1;    transform: scale(1.15); }
+}
+
+/* --- Response surface (modeled on .toast / .ctx-card) --- */
+.fb-response {
+  display: none;
+  margin: 10px 0 4px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, #15101c 0%, var(--panel) 100%);
+  border: 1px solid var(--third-border);
+  border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.3), 0 0 0 1px #b58acc14;
+}
+.fb-response.on { display: block; }
+.fb-response .fb-resp-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--code);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--third);
+  margin-bottom: 8px;
+  text-transform: lowercase;
+}
+.fb-response .fb-resp-head .fb-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--third);
+  box-shadow: 0 0 6px var(--third);
+}
+.fb-response .fb-resp-head .fb-route { color: var(--text-muted); }
+.fb-response .fb-resp-body {
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+  letter-spacing: -0.005em;
+  min-height: 1.4em;
+  white-space: pre-wrap;
+}
+.fb-response .fb-resp-body.tw-typing::after {
+  content: '▍';
+  display: inline-block;
+  margin-left: 1px;
+  color: var(--third);
+  animation: fbCaret 0.9s steps(2) infinite;
+}
+@keyframes fbCaret { 50% { opacity: 0; } }
+.fb-response .fb-resp-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border-soft);
+  font-family: var(--code);
+  font-size: 9.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.fb-response .fb-resp-foot .fb-mode-sub { color: var(--warn); }
+.fb-response .fb-again {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-family: var(--code);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.fb-response .fb-again:hover { color: var(--text); border-color: var(--text-muted); }
+
+/* --- Error surface --- */
+.fb-error {
+  display: none;
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  background: #1a0e0e;
+  border: 1px solid #ff8aa844;
+  border-radius: 8px;
+  font-family: var(--code);
+  font-size: 11px;
+  color: var(--akhil);
+  line-height: 1.5;
+}
+.fb-error.on { display: block; }
+.fb-error .fb-retry {
+  margin-left: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid #ff8aa844;
+  color: var(--akhil);
+  font-family: var(--code);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+/* --- Prior threads list (above input on reopen) --- */
+.fb-history {
+  display: none;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  background: #0d0c12;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.fb-history.on { display: block; }
+.fb-history .fb-hist-title {
+  font-family: var(--code);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.fb-history .fb-hist-item {
+  padding: 6px 0;
+  border-top: 1px dashed var(--border-soft);
+  font-family: var(--code);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+.fb-history .fb-hist-item:first-of-type { border-top: 0; }
+.fb-history .fb-hist-you { color: var(--third); }
+.fb-history .fb-hist-arch { color: var(--text-2); display: block; margin-top: 2px; font-family: var(--serif); font-size: 12px; color: var(--text-2); }
+.fb-history .fb-hist-ts { color: var(--text-muted); font-size: 9px; float: right; }
+
+/* --- Custom gutter particle: third-writer comment ---
+   Re-uses .ev shape; fires once on submit via .ev.fire-once class.
+   Only meaningful on scenarios that render a .gutter (e.g. 09). */
+.ev.third {
+  border-color: var(--third-border);
+  color: var(--third);
+  background: #b58acc12;
+}
+.ev.fire-once {
+  animation: fbFlyOnce 1600ms var(--ease) 1 both;
+}
+@keyframes fbFlyOnce {
+  0%   { opacity: 0; transform: translate(-280%, -50%) scale(0.6); }
+  18%  { opacity: 1; transform: translate(-120%, -50%) scale(1); }
+  50%  { opacity: 1; transform: translate(0,     -50%) scale(1.1); box-shadow: 0 0 14px var(--third); }
+  82%  { opacity: 1; transform: translate(120%,  -50%) scale(1); }
+  100% { opacity: 0; transform: translate(280%,  -50%) scale(0.6); }
+}
+
+/* Architect pip "composing" override while feedback is drafting */
+.pip.fb-drafting-pip::before {
+  background: var(--third) !important;
+  box-shadow: 0 0 8px var(--third) !important;
+  animation: pulse 1.4s ease-in-out infinite !important;
+}
+
+/* --- Reduced motion: skip transitions & typing --- */
+@media (prefers-reduced-motion: reduce) {
+  .fb-trigger, .fb-panel, .fb-scrim, .fb-drafting .fb-pulse,
+  .fb-response .fb-resp-body.tw-typing::after, .ev.fire-once {
+    transition: none !important;
+    animation: none !important;
+  }
 }

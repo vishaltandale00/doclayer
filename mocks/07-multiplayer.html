@@ -1551,5 +1551,63 @@
   <div class="sg-foot"><a href="guide.html">full walkthrough</a><span>07 / multiplayer</span></div>
 </aside>
 <script src="guide.js"></script>
+
+<!-- ============== FEEDBACK WIDGET (shared — see feedback.js) ============== -->
+<button class="fb-trigger" id="fbTrigger" aria-haspopup="dialog" aria-controls="fbPanel">
+  <span class="fb-plus" aria-hidden="true">+</span>
+  <span class="fb-trig-label">you · <b>drop a comment</b></span>
+</button>
+<div class="fb-scrim" id="fbScrim" aria-hidden="true"></div>
+<aside class="fb-panel" id="fbPanel" data-scenario="07-multiplayer" data-phase="multiplayer" role="dialog" aria-modal="true" aria-labelledby="fbTitle" aria-hidden="true">
+  <div class="fb-head">
+    <span class="fb-title" id="fbTitle">your turn · <b>drop a comment</b></span>
+    <button class="fb-close" id="fbClose" aria-label="close">&times;</button>
+  </div>
+  <div class="fb-body">
+    <div class="fb-history" id="fbHistory" aria-label="prior threads"></div>
+
+    <div class="fb-roles" role="radiogroup" aria-label="role">
+      <button class="fb-role on" data-role="writer" role="radio" aria-checked="true">third writer (joining)</button>
+      <button class="fb-role"    data-role="observer" role="radio" aria-checked="false">observer</button>
+      <button class="fb-role"    data-role="akhil" role="radio" aria-checked="false">as akhil (reviewer)</button>
+    </div>
+
+    <textarea class="fb-text" id="fbText" maxlength="300" rows="4" placeholder="what would you change about this scenario?"></textarea>
+    <div class="fb-meta">
+      <span>routed to · <span style="color:var(--vishal)">vishal</span> + <span style="color:var(--akhil)">akhil</span></span>
+      <span class="fb-count" id="fbCount">0 / 300</span>
+    </div>
+
+    <div class="fb-actions">
+      <button class="fb-submit" id="fbSubmit" disabled>send to architect ↗</button>
+      <span class="fb-disclaimer">drafted live by claude haiku · ~2s<br>routed via vercel</span>
+    </div>
+
+    <div class="fb-drafting" id="fbDrafting" aria-live="polite">
+      <span class="fb-pulse" aria-hidden="true"></span>
+      <span>architect drafting<span id="fbDots">…</span></span>
+    </div>
+
+    <div class="fb-response" id="fbResponse" aria-live="polite">
+      <div class="fb-resp-head">
+        <span class="fb-dot" aria-hidden="true"></span>
+        <span>architect · response</span>
+        <span class="fb-route">· routed to vishal/akhil</span>
+      </div>
+      <div class="fb-resp-body" id="fbRespBody"></div>
+      <div class="fb-resp-foot">
+        <span>this lives in your local thread <span class="fb-mode-sub" id="fbModeSub" style="display:none">· demo mode (canned)</span></span>
+        <button class="fb-again" id="fbAgain">send another</button>
+      </div>
+    </div>
+
+    <div class="fb-error" id="fbError">
+      <span id="fbErrorMsg">couldn't draft — try again</span>
+      <button class="fb-retry" id="fbRetry">retry</button>
+    </div>
+  </div>
+</aside>
+<script src="feedback.js" defer></script>
+
 </body>
 </html>

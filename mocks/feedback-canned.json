@@ -1,0 +1,80 @@
+{
+  "_meta": {
+    "description": "Canned fallback responses for the feedback widget when the /api/draft-feedback endpoint returns {fallback: 'canned'}. The client widget iterates patterns top-to-bottom and uses the first match. 'generic' is the final catch-all.",
+    "version": 1
+  },
+  "responses": [
+    {
+      "key": "copy",
+      "pattern": "(?i)\\b(copy|wording|phrasing|prose|sentence|paragraph|word|rewrite)\\b",
+      "response": "routing to vishal's queue — copy feedback. the line you're pointing at is doing too much; i'll cut it in half and see if the next sentence still lands. if it does, the original was load-bearing on a vibe, not a thought.",
+      "routedTo": "vishal"
+    },
+    {
+      "key": "voice",
+      "pattern": "(?i)\\b(voice|tone|marketing|fluff|salesy|hype)\\b",
+      "response": "vishal's queue. voice drift is the failure mode i'm most worried about — if it reads like a landing page, the doc has stopped doing its job. concrete fix: strip the adjective and keep the noun.",
+      "routedTo": "vishal"
+    },
+    {
+      "key": "missing-feature",
+      "pattern": "(?i)\\b(missing|should have|need|lacks|where('?s| is) the|what about)\\b",
+      "response": "akhil's queue — scope question, not a copy fix. either the doc needs to name the gap explicitly (so the reader stops looking) or the scenario needs to include it. i think it's the former; the demo is a slice, not a survey.",
+      "routedTo": "akhil"
+    },
+    {
+      "key": "disagree",
+      "pattern": "(?i)\\b(disagree|wrong|push.?back|don'?t (buy|agree)|not convinced)\\b",
+      "response": "akhil's queue — this is the kind of disagreement the review loop is built for. take it as a comment on the doc, not the demo; if the argument doesn't survive the push-back, the rewrite should be visible inside the scenario itself.",
+      "routedTo": "akhil"
+    },
+    {
+      "key": "wrong",
+      "pattern": "(?i)\\b(incorrect|inaccurate|broken|bug|typo|misspell)\\b",
+      "response": "vishal's queue. fact-level or surface-level errors get fixed in place, not debated. flagging it.",
+      "routedTo": "vishal"
+    },
+    {
+      "key": "love",
+      "pattern": "(?i)\\b(love|great|nice|good|amazing|perfect|excellent|works|clean)\\b",
+      "response": "noted. the parts that work are the parts to protect during the next round of changes — i'll mark it so akhil doesn't quietly rewrite it on the review pass.",
+      "routedTo": "both"
+    },
+    {
+      "key": "more",
+      "pattern": "(?i)\\b(more|expand|deeper|elaborate|add)\\b",
+      "response": "akhil's queue. 'more' usually means the doc didn't pay off a promise it made earlier; the fix is either to pay it off or to not make the promise. i lean toward not making the promise.",
+      "routedTo": "akhil"
+    },
+    {
+      "key": "less",
+      "pattern": "(?i)\\b(less|cut|too long|trim|verbose|shorten)\\b",
+      "response": "vishal's queue. length is a copy problem until proven otherwise. i'll do a cut pass and see what falls out without anyone noticing.",
+      "routedTo": "vishal"
+    },
+    {
+      "key": "clarity",
+      "pattern": "(?i)\\b(confus|unclear|don'?t understand|hard to follow|lost|ambiguous)\\b",
+      "response": "both queues. clarity failures are usually a structure problem dressed as a copy problem — akhil takes the structure, vishal takes the surface. if the structure is fine, the copy fix is small. if it isn't, the copy fix is wasted work.",
+      "routedTo": "both"
+    },
+    {
+      "key": "animation",
+      "pattern": "(?i)\\b(animat|transition|motion|jitter|laggy|jank|flicker)\\b",
+      "response": "demo-layer issue, not doc-layer. the scenario shouldn't be doing animation work that distracts from the writing surface; if the motion is what you remember, the motion is too loud.",
+      "routedTo": "vishal"
+    },
+    {
+      "key": "scenario",
+      "pattern": "(?i)\\b(scenario|demo|mock|example|flow|step)\\b",
+      "response": "meta feedback on the scenario itself. the scenario is supposed to show one thing clearly; if it's showing two, one of them has to leave. naming which one is the useful next move.",
+      "routedTo": "both"
+    },
+    {
+      "key": "generic",
+      "pattern": ".*",
+      "response": "logged. without an api key the architect can only draft a stub; the real reply would route this to vishal or akhil depending on whether it's a surface fix or a structural one. for now: assume both queues see it.",
+      "routedTo": "both"
+    }
+  ]
+}

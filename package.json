@@ -1,0 +1,13 @@
+{
+  "name": "doclayer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "doclayer mocks + feedback drafting serverless function",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.40.1"
+  },
+  "devDependencies": {
+    "@vercel/node": "^3.2.0",
+    "typescript": "^5.5.0"
+  }
+}
