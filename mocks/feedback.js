@@ -15,6 +15,7 @@
   var SCENARIO = root.dataset.scenario || 'unknown';
   var PHASE = root.dataset.phase || '';
   var STORAGE_KEY = 'doclayer-feedback-' + SCENARIO;
+  var QUEUE_KEY = 'doclayer-feedback-queue-' + SCENARIO;
   var API_URL = '/api/draft-feedback';
   var CANNED_URL = 'feedback-canned.json';
   var REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -38,12 +39,16 @@
   var hist       = document.getElementById('fbHistory');
   // Optional: scenario-specific embellishments. Missing = silent no-op.
   var gutter     = document.getElementById('gutter');
-  var pipV       = document.getElementById('pip-v');
+  var pipEl      = document.querySelector('.harness-strip .pip') || document.getElementById('pip-v');
   var roleBtns   = panel.querySelectorAll('.fb-role');
+  var draftLabel = drafting && drafting.querySelector('span:not(.fb-pulse)');
 
   var currentRole = 'writer';
   var lastPayload = null;
   var cannedCache = null;
+  var stageTimer = null;
+  var countdownTimer = null;
+  var queueBanner = null;
 
   // ---- Open / close ----
   function open() {
@@ -52,6 +57,7 @@
     panel.setAttribute('aria-hidden', 'false');
     document.body.classList.add('fb-open');
     renderHistory();
+    renderQueueBanner();
     setTimeout(function () { try { text.focus(); } catch (e) {} }, 220);
   }
   function close() {
@@ -126,7 +132,7 @@
   // ---- Gutter particle: fire the third-writer event once ----
   // No-op on scenarios without a #gutter element.
   function fireGutterParticle() {
-    if (!gutter) return;
+    if (!gutter || REDUCED) return;
     var ev = document.createElement('span');
     ev.className = 'ev third fire-once';
     ev.style.top = '36%';
@@ -135,17 +141,48 @@
     setTimeout(function () { if (ev.parentNode) ev.parentNode.removeChild(ev); }, 1800);
   }
 
-  // ---- Architect pip pulse (09 only — pip-v exists) ----
+  // ---- Architect pip pulse ----
   function pipDrafting(on) {
-    if (!pipV) return;
+    if (!pipEl) return;
     if (on) {
-      pipV.classList.add('fb-drafting-pip');
-      pipV._fbPrev = pipV.textContent;
-      pipV.textContent = 'architect: drafting reply';
+      pipEl.classList.add('fb-drafting-pip');
+      pipEl._fbPrev = pipEl.textContent;
+      pipEl.textContent = 'architect: drafting reply';
     } else {
-      pipV.classList.remove('fb-drafting-pip');
-      // Don't restore text — the 30s loop reclaims it on the next frame.
+      pipEl.classList.remove('fb-drafting-pip');
     }
+  }
+
+  function startStages(role) {
+    if (!draftLabel) return;
+    var s = ['reading your comment…', 'routing to ' + (role==='architect'?"akhil's":"vishal's") + ' queue…', 'drafting response…'], i=0;
+    draftLabel.textContent = s[0];
+    stageTimer = setInterval(function(){ if(++i>=s.length){clearInterval(stageTimer);stageTimer=null;return;} draftLabel.textContent=s[i]; }, 600);
+  }
+  function stopStages() {
+    if (stageTimer) { clearInterval(stageTimer); stageTimer = null; }
+    if (draftLabel) draftLabel.textContent = 'architect drafting…';
+  }
+  function endDrafting() { stopStages(); pipDrafting(false); drafting.classList.remove('on'); }
+  function loadQueue(){try{return JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]');}catch(e){return[];}}
+  function saveQueue(q){try{localStorage.setItem(QUEUE_KEY,JSON.stringify(q.slice(-10)));}catch(e){}}
+  function renderQueueBanner() {
+    if (queueBanner && queueBanner.parentNode) queueBanner.parentNode.removeChild(queueBanner);
+    queueBanner = null;
+    var q = loadQueue();
+    if (!q.length) return;
+    queueBanner = document.createElement('div');
+    queueBanner.className = 'fb-queue';
+    queueBanner.innerHTML = q.length+' comment'+(q.length>1?'s':'')+' waiting · <button class="fb-queue-try" type="button">try now</button>';
+    var body = panel.querySelector('.fb-body');
+    body.insertBefore(queueBanner, body.firstChild);
+    queueBanner.querySelector('.fb-queue-try').addEventListener('click', function () {
+      var q = loadQueue(), item = q.shift(); if (!item) return;
+      saveQueue(q);
+      text.value = item.payload.feedback;
+      currentRole = item.payload.role;
+      refreshCount(); renderQueueBanner(); doSubmit();
+    });
   }
 
   // ---- Typing engine: local typer for the response body ----
@@ -200,16 +237,35 @@
   }
 
   // ---- Submit flow ----
+  function setSubmitting(on) {
+    submit.disabled = on || text.value.trim().length < 3;
+    submit.textContent = on ? 'drafting…' : 'send to architect ↗';
+  }
   function showError(msg, retryable) {
     err.classList.add('on');
     errMsg.textContent = msg;
     retryBtn.style.display = retryable ? '' : 'none';
+  }
+  function startCountdown(s) {
+    if (countdownTimer) clearInterval(countdownTimer);
+    retryBtn.style.display = 'none';
+    function tick() {
+      errMsg.textContent = "you're typing fast · try again in "+s+'s';
+      if (s-- <= 0) {
+        clearInterval(countdownTimer); countdownTimer = null;
+        errMsg.textContent = 'ready · try again';
+        retryBtn.style.display = ''; setSubmitting(false);
+      }
+    }
+    tick(); countdownTimer = setInterval(tick, 1000);
   }
   function clearStates() {
     err.classList.remove('on');
     response.classList.remove('on');
     drafting.classList.remove('on');
     modeSub.style.display = 'none';
+    stopStages();
+    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
   }
 
   function doSubmit() {
@@ -219,7 +275,8 @@
 
     clearStates();
     drafting.classList.add('on');
-    submit.disabled = true;
+    setSubmitting(true);
+    startStages(currentRole);
     pipDrafting(true);
     fireGutterParticle();
 
@@ -229,30 +286,26 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(lastPayload),
     }).then(function (res) {
-      return res.json().then(function (json) { return { status: res.status, body: json }; });
+      return res.json().then(function (j) { return { status: res.status, body: j }; },
+                            function () { return { status: res.status, body: {} }; });
     }).then(function (out) {
-      var elapsed = Date.now() - started;
-      var minDelay = Math.max(0, 900 - elapsed); // keep at least ~0.9s of drafting state
+      var minDelay = Math.max(0, 900 - (Date.now() - started));
       setTimeout(function () { handleResponse(out); }, minDelay);
     }).catch(function () {
-      // Network error / no API mounted → degrade to canned.
       fetchCanned().then(function (canned) {
         var pick = pickCanned(lastPayload.feedback, lastPayload.role, canned);
-        pipDrafting(false);
-        drafting.classList.remove('on');
+        endDrafting();
         renderResponse(pick.response, true, pick.routedTo);
       }).catch(function () {
-        pipDrafting(false);
-        drafting.classList.remove('on');
-        submit.disabled = false;
-        showError("couldn't draft — try again", true);
+        endDrafting(); setSubmitting(false);
+        var q=loadQueue(); q.push({payload:lastPayload,pending:true,timestamp:Date.now()}); saveQueue(q);
+        showError("couldn't reach the architect · saved locally · will draft when online", true);
       });
     });
   }
 
   function handleResponse(out) {
-    pipDrafting(false);
-    drafting.classList.remove('on');
+    endDrafting();
 
     if (out.status >= 200 && out.status < 300 && out.body && out.body.response) {
       renderResponse(out.body.response, false, out.body.routedTo);
@@ -263,17 +316,22 @@
         var pick = pickCanned(lastPayload.feedback, lastPayload.role, canned);
         renderResponse(pick.response, true, pick.routedTo);
       }).catch(function () {
-        submit.disabled = false;
+        setSubmitting(false);
         showError("couldn't load fallback — try again", true);
       });
       return;
     }
     if (out.status === 429) {
-      submit.disabled = false;
-      showError('rate limited, try again in a minute', false);
+      setSubmitting(true);
+      err.classList.add('on');
+      startCountdown(60);
       return;
     }
-    submit.disabled = false;
+    setSubmitting(false);
+    if (out.status === 502 || out.status === 500) {
+      showError('the architect glitched · retry?', true);
+      return;
+    }
     var msg = (out.body && out.body.error) ? ("couldn't draft — " + out.body.error) : "couldn't draft — try again";
     showError(msg, true);
   }
@@ -281,11 +339,10 @@
   function renderResponse(textOut, isCanned, routedTo) {
     response.classList.add('on');
     modeSub.style.display = isCanned ? '' : 'none';
-    // Update route hint
     var routeEl = response.querySelector('.fb-route');
     if (routedTo && routeEl) routeEl.textContent = '· routed to ' + routedTo;
+    setSubmitting(false);
     typeInto(respBody, textOut, function () {
-      // Persist this exchange to localStorage thread
       pushThread({
         feedback: lastPayload.feedback,
         response: textOut,
@@ -298,7 +355,10 @@
   }
 
   submit.addEventListener('click', doSubmit);
-  retryBtn.addEventListener('click', doSubmit);
+  retryBtn.addEventListener('click', function () {
+    clearStates();
+    doSubmit();
+  });
   againBtn.addEventListener('click', function () {
     clearStates();
     text.value = '';

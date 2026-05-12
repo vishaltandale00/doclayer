@@ -1299,8 +1299,13 @@ body.fb-open .stage { filter: saturate(0.72) brightness(0.78); transition: filte
   color: var(--text-muted);
   letter-spacing: 0.04em;
 }
-.fb-meta .fb-count { font-variant-numeric: tabular-nums; }
-.fb-meta .fb-count.warn { color: var(--warn); }
+.fb-meta .fb-count {
+  font-variant-numeric: tabular-nums; text-align: right;
+  padding: 2px 6px; border-radius: 4px;
+  background: var(--panel-2); color: var(--text-2);
+  transition: color 160ms var(--ease), background 160ms var(--ease);
+}
+.fb-meta .fb-count.warn { color: var(--warn); background: #3a1f0e; }
 
 /* Submit row */
 .fb-actions {
@@ -1515,6 +1520,19 @@ body.fb-open .stage { filter: saturate(0.72) brightness(0.78); transition: filte
   50%  { opacity: 1; transform: translate(0,     -50%) scale(1.1); box-shadow: 0 0 14px var(--third); }
   82%  { opacity: 1; transform: translate(120%,  -50%) scale(1); }
   100% { opacity: 0; transform: translate(280%,  -50%) scale(0.6); }
+}
+
+/* Offline queue banner */
+.fb-queue {
+  margin-bottom: 10px; padding: 7px 10px;
+  background: #1a1408; border: 1px solid #d4a14844; border-radius: 8px;
+  font: 10.5px var(--code); color: var(--warn);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.fb-queue-try {
+  padding: 3px 9px; border-radius: 999px;
+  background: transparent; border: 1px solid #d4a14866;
+  color: var(--warn); font: 10px var(--code); cursor: pointer;
 }
 
 /* Architect pip "composing" override while feedback is drafting */
