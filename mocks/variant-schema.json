@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://doclayer.live/schema/variant/v1",
+  "title": "doclayer variant manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "schemaVersion", "createdAt", "owner", "permissions"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "schemaVersion": { "type": "string", "const": "1" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "owner": { "type": "string", "maxLength": 200 },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "maxLength": 60 }
+    },
+    "styles": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cssVars": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "typing-speed-ms": {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 300,
+              "default": 60
+            }
+          }
+        },
+        "animation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "global": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "duration": {
+                  "type": "number",
+                  "minimum": 0.5,
+                  "maximum": 2.0,
+                  "default": 1.0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bg": { "$ref": "#/$defs/colorToken", "default": "#0a0a0b" },
+            "panel": { "$ref": "#/$defs/colorToken", "default": "#131316" },
+            "panel-2": { "$ref": "#/$defs/colorToken", "default": "#1a1a1f" },
+            "border": { "$ref": "#/$defs/colorToken", "default": "#26262c" },
+            "border-soft": { "$ref": "#/$defs/colorToken", "default": "#1f1f25" },
+            "text": { "$ref": "#/$defs/colorToken", "default": "#ebebef" },
+            "text-2": { "$ref": "#/$defs/colorToken", "default": "#b0b0b8" },
+            "text-muted": { "$ref": "#/$defs/colorToken", "default": "#6a6a74" },
+            "accent": { "$ref": "#/$defs/colorToken", "default": "#95e35d" },
+            "accent-soft": { "$ref": "#/$defs/colorToken", "default": "#95e35d22" },
+            "accent-2": { "$ref": "#/$defs/colorToken", "default": "#7a9a6e" },
+            "vishal": { "$ref": "#/$defs/colorToken", "default": "#6ba0ff" },
+            "akhil": { "$ref": "#/$defs/colorToken", "default": "#ff8aa8" },
+            "warn": { "$ref": "#/$defs/colorToken", "default": "#ffb86b" },
+            "third": { "$ref": "#/$defs/colorToken", "default": "#b58acc" }
+          }
+        },
+        "spacing": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "radius": { "$ref": "#/$defs/spacing", "default": "8px" },
+            "radius-lg": { "$ref": "#/$defs/spacing", "default": "14px" },
+            "row-topbar": { "$ref": "#/$defs/spacing", "default": "44px" },
+            "row-harness": { "$ref": "#/$defs/spacing", "default": "27px" },
+            "row-status": { "$ref": "#/$defs/spacing", "default": "28px" }
+          }
+        },
+        "typography": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "family": { "$ref": "#/$defs/fontFamily", "default": "'IBM Plex Mono', monospace" }
+              }
+            },
+            "sans": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "family": { "$ref": "#/$defs/fontFamily", "default": "'Inter', sans-serif" }
+              }
+            },
+            "serif": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "family": { "$ref": "#/$defs/fontFamily", "default": "'Iowan Old Style', serif" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "blocks": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "type": "object",
+              "patternProperties": {
+                "^[a-z0-9-]{1,40}$": { "$ref": "#/$defs/block" }
+              },
+              "additionalProperties": false
+            },
+            "order": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[a-z0-9-]{1,40}$" },
+              "maxItems": 500
+            }
+          }
+        }
+      }
+    },
+    "visibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "next-strip": { "type": "boolean", "default": true },
+        "vs-frame": { "type": "boolean", "default": true },
+        "flow-counter": { "type": "boolean", "default": true },
+        "flow-loop": { "type": "boolean", "default": true },
+        "flow-agent-rail": { "type": "boolean", "default": true },
+        "bootstrap-evidence": { "type": "boolean", "default": true },
+        "bootstrap-tension": { "type": "boolean", "default": true },
+        "planning-evidence": { "type": "boolean", "default": true },
+        "planning-tension": { "type": "boolean", "default": true },
+        "planning-density": { "type": "boolean", "default": true },
+        "drafting-voice-sampler": { "type": "boolean", "default": true },
+        "drafting-brainstorm": { "type": "boolean", "default": true },
+        "drafting-density": { "type": "boolean", "default": true },
+        "drafting-fidelity": { "type": "boolean", "default": true },
+        "review-budget": { "type": "boolean", "default": true },
+        "review-lesson": { "type": "boolean", "default": true },
+        "review-approval": { "type": "boolean", "default": true },
+        "publish-manifest": { "type": "boolean", "default": true },
+        "publish-share": { "type": "boolean", "default": true },
+        "publish-build": { "type": "boolean", "default": true },
+        "reader-grammar": { "type": "boolean", "default": true },
+        "reader-intro": { "type": "boolean", "default": true },
+        "multiplayer-evidence": { "type": "boolean", "default": true },
+        "multiplayer-voice-mirror": { "type": "boolean", "default": true },
+        "multiplayer-density": { "type": "boolean", "default": true },
+        "multiplayer-leftrail": { "type": "boolean", "default": true },
+        "multiplayer-rightrail": { "type": "boolean", "default": true },
+        "workstream-counter": { "type": "boolean", "default": true },
+        "workstream-agent": { "type": "boolean", "default": true },
+        "review-loop-iterate-rail": { "type": "boolean", "default": true },
+        "review-loop-inline-rail": { "type": "boolean", "default": true },
+        "review-loop-akhil-leftrail": { "type": "boolean", "default": true },
+        "review-loop-toast": { "type": "boolean", "default": true },
+        "review-loop-min-strip": { "type": "boolean", "default": true }
+      }
+    },
+    "microcopy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "series-kicker": { "$ref": "#/$defs/microcopy80", "default": "doclayer / mocks" },
+        "series-subtitle": { "$ref": "#/$defs/microcopy200", "default": "Two writers in their own lanes." },
+        "series-lede": { "$ref": "#/$defs/microcopy", "default": "A meta-harness for collaborative writing." },
+        "lifecycle-card-title": { "$ref": "#/$defs/microcopy200", "default": "The whole lifecycle in one continuous reel." },
+        "lifecycle-card-blurb": { "$ref": "#/$defs/microcopy", "default": "A series of 4 articles." },
+        "next-strip-body": { "$ref": "#/$defs/microcopy", "default": "Dogfooded build with Akhil." },
+        "flow-series-card-1": { "$ref": "#/$defs/microcopy200", "default": "What is a harness?" },
+        "flow-series-card-2": { "$ref": "#/$defs/microcopy200", "default": "Why scaling LLMs doesn't solve it" },
+        "flow-series-card-3": { "$ref": "#/$defs/microcopy200", "default": "Building meta-harnesses" },
+        "flow-series-card-4": { "$ref": "#/$defs/microcopy200", "default": "Multiplayer & evals" },
+        "flow-vishal-section-h": { "$ref": "#/$defs/microcopy200", "default": "Recursion as the prior" },
+        "flow-akhil-section-h": { "$ref": "#/$defs/microcopy200", "default": "The shape of the ceiling" },
+        "flow-sp-caption-1": { "$ref": "#/$defs/microcopy", "default": "the architect proposed a trajectory" },
+        "bootstrap-h2": { "$ref": "#/$defs/microcopy200", "default": "What are you writing?" },
+        "bootstrap-sub": { "$ref": "#/$defs/microcopy", "default": "Four answers. The workspace composes itself." },
+        "bootstrap-label-title": { "$ref": "#/$defs/microcopy80", "default": "Title" },
+        "bootstrap-label-coauthors": { "$ref": "#/$defs/microcopy80", "default": "Co-authors" },
+        "bootstrap-label-audience": { "$ref": "#/$defs/microcopy80", "default": "Audience" },
+        "bootstrap-label-output": { "$ref": "#/$defs/microcopy80", "default": "Output" },
+        "bootstrap-fit-pill": { "$ref": "#/$defs/microcopy80", "default": "audience-fit 0.86" },
+        "planning-vishal-prior": { "$ref": "#/$defs/microcopy80", "default": "builder concrete-first" },
+        "planning-akhil-prior": { "$ref": "#/$defs/microcopy80", "default": "claim-first evals advocate" },
+        "planning-vishal-layout": { "$ref": "#/$defs/microcopy80", "default": "editor + evidence rail" },
+        "planning-akhil-layout": { "$ref": "#/$defs/microcopy80", "default": "tension rail + editor" },
+        "planning-gutter-caption": { "$ref": "#/$defs/microcopy", "default": "shared outline shared chain two harnesses" },
+        "drafting-stall-banner": { "$ref": "#/$defs/microcopy", "default": "still for 18s the architect drafted 3 continuations in 2 voices." },
+        "drafting-architect-caption": { "$ref": "#/$defs/microcopy", "default": "the architect did not pick drafting." },
+        "drafting-variant-v1-label": { "$ref": "#/$defs/microcopy80", "default": "your voice expansive" },
+        "drafting-variant-v2-label": { "$ref": "#/$defs/microcopy80", "default": "akhils voice denser" },
+        "drafting-variant-v3-label": { "$ref": "#/$defs/microcopy80", "default": "claim-first" },
+        "review-budget-label": { "$ref": "#/$defs/microcopy80", "default": "AI suggestion budget" },
+        "review-chip-1": { "$ref": "#/$defs/microcopy80", "default": "tighten search space is constrained" },
+        "review-chip-2": { "$ref": "#/$defs/microcopy80", "default": "add citation meta-ide grammar" },
+        "review-chip-3": { "$ref": "#/$defs/microcopy200", "default": "accept atoms from a kit" },
+        "review-chip-4": { "$ref": "#/$defs/microcopy80", "default": "soften forced to compose" },
+        "publish-form-h3": { "$ref": "#/$defs/microcopy200", "default": "Ship to a real domain" },
+        "publish-preflight-head": { "$ref": "#/$defs/microcopy80", "default": "ready to publish" },
+        "publish-cta": { "$ref": "#/$defs/microcopy80", "default": "Publish" },
+        "publish-prior-eng": { "$ref": "#/$defs/microcopy80", "default": "AI engineer" },
+        "publish-prior-pm": { "$ref": "#/$defs/microcopy80", "default": "PM" },
+        "publish-prior-researcher": { "$ref": "#/$defs/microcopy80", "default": "researcher" },
+        "publish-byline": { "$ref": "#/$defs/microcopy200", "default": "Akhil R & Vishal Tandale 2026 part 1 of 4" },
+        "reader-pitch": { "$ref": "#/$defs/microcopy", "default": "same article. same manifest. three priors." },
+        "reader-prior-label-eng": { "$ref": "#/$defs/microcopy80", "default": "AI engineer" },
+        "reader-prior-label-pm": { "$ref": "#/$defs/microcopy80", "default": "PM" },
+        "reader-prior-label-res": { "$ref": "#/$defs/microcopy80", "default": "researcher" },
+        "reader-byline": { "$ref": "#/$defs/microcopy200", "default": "Akhil R & Vishal Tandale 2026 part 1 of 4" },
+        "reader-intro-h2": { "$ref": "#/$defs/microcopy200", "default": "watch one article re-render for three priors" },
+        "multiplayer-vishal-prior": { "$ref": "#/$defs/microcopy200", "default": "builder concrete-first multiplayer fanboy" },
+        "multiplayer-akhil-prior": { "$ref": "#/$defs/microcopy200", "default": "claim-first evals advocate dense paragraphs" },
+        "multiplayer-vishal-layout": { "$ref": "#/$defs/microcopy200", "default": "wide-editor + evidence + voice-mirror" },
+        "multiplayer-akhil-layout": { "$ref": "#/$defs/microcopy200", "default": "1 RLMs framing claim-first paragraphs" },
+        "multiplayer-stuck-body": { "$ref": "#/$defs/microcopy", "default": "stuck on framing? the architect noticed you have been still 4s." },
+        "workstream-article-1-audience": { "$ref": "#/$defs/microcopy80", "default": "AI engineers" },
+        "workstream-article-2-audience": { "$ref": "#/$defs/microcopy80", "default": "AI engineers + researchers" },
+        "workstream-article-3-audience": { "$ref": "#/$defs/microcopy80", "default": "builders" },
+        "workstream-article-4-audience": { "$ref": "#/$defs/microcopy80", "default": "product + research" },
+        "review-loop-pitch-drafting": { "$ref": "#/$defs/microcopy200", "default": "wide editor + inline-AI rail" },
+        "review-loop-pitch-iterate": { "$ref": "#/$defs/microcopy200", "default": "iterate mode" },
+        "review-loop-toast-body": { "$ref": "#/$defs/microcopy", "default": "1 critical 2 suggestions agreed with adversarial" },
+        "review-loop-review-banner": { "$ref": "#/$defs/microcopy200", "default": "harness shifted review mode 3.2 from vishal" }
+      }
+    }
+  },
+  "$defs": {
+    "colorToken": {
+      "type": "string",
+      "pattern": "^(#[0-9a-fA-F]{3,8}|rgba?\\([^)]+\\)|black|white|transparent|currentColor|red|green|blue|yellow|orange|purple|pink|brown|gray|grey|cyan|magenta|lime|navy|olive|teal|silver|maroon|fuchsia|aqua)$",
+      "maxLength": 80
+    },
+    "spacing": {
+      "type": "string",
+      "pattern": "^[0-9]+(px|em|rem|%)$",
+      "maxLength": 12
+    },
+    "fontFamily": {
+      "type": "string",
+      "maxLength": 180,
+      "pattern": "^[A-Za-z0-9 ,_'\\\"\\-]+$"
+    },
+    "microcopy": {
+      "type": "string",
+      "maxLength": 280
+    },
+    "microcopy200": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "microcopy80": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "visible": { "type": "boolean", "default": true },
+        "type": {
+          "type": "string",
+          "enum": ["paragraph", "heading", "callout", "code", "list", "h2", "h3"]
+        },
+        "headingText": { "type": "string", "maxLength": 200 },
+        "calloutLabel": { "type": "string", "maxLength": 80 }
+      }
+    }
+  }
+}

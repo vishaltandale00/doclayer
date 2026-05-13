@@ -2501,3 +2501,478 @@ body.id-modal-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .patch-applied-countdown .pac-fill { transition: none !important; }
 }
+
+/* =========================================================================
+   Phase 5 — Variants gallery + cross-variant browse + diff modal.
+   ========================================================================= */
+.variants-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 56px 32px 96px;
+}
+.variants-page h1 {
+  font-size: 44px;
+  letter-spacing: -0.03em;
+  font-weight: 600;
+  margin: 0 0 14px;
+  line-height: 1.05;
+  color: var(--text);
+}
+.variants-page .vp-lede {
+  font-family: var(--serif);
+  font-size: 17px;
+  color: var(--text-2);
+  max-width: 720px;
+  line-height: 1.55;
+  margin: 0 0 28px;
+}
+.variants-page .vp-cta-anon {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  margin-bottom: 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--akhil);
+  border-radius: var(--r);
+  font-size: 13px;
+  color: var(--text-2);
+}
+.variants-page .vp-cta-anon-btn {
+  font-family: var(--code);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: #0a1408;
+  background: var(--accent);
+  border: none;
+  padding: 7px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.variants-page .vp-cta-anon-btn:hover { filter: brightness(1.05); }
+
+.variants-page .vp-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.variants-page .vp-search {
+  flex: 1 1 280px;
+  min-width: 240px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--code);
+  font-size: 12px;
+}
+.variants-page .vp-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.variants-page .vp-sort {
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-2);
+  font-family: var(--code);
+  font-size: 12px;
+}
+.variants-page .vp-count {
+  font-family: var(--code);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.variants-page .vp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+  margin-bottom: 32px;
+}
+.variants-page .vp-empty {
+  grid-column: 1 / -1;
+  padding: 36px 18px;
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  border: 1px dashed var(--border);
+  border-radius: var(--r);
+}
+
+.variant-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 180ms ease, transform 180ms ease;
+}
+.variant-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+.variant-card .vc-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.variant-card-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  color: #0a1408;
+  font-family: var(--code);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.variant-card .vc-id { flex: 1; min-width: 0; }
+.variant-card .vc-email {
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.variant-card .vc-sub {
+  font-family: var(--code);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+.variant-card .vc-sub code {
+  font-family: var(--code);
+  color: var(--text-2);
+  background: var(--panel-2);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.variant-card .vc-stats {
+  font-family: var(--code);
+  font-size: 11px;
+  color: var(--text-2);
+  letter-spacing: 0.04em;
+}
+.variant-card .vc-stats b { color: var(--accent); font-weight: 600; }
+.variant-card .vc-paths {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.variant-card .vc-paths li {
+  font-family: var(--code);
+  font-size: 11px;
+  color: var(--text-2);
+  padding-left: 12px;
+  position: relative;
+}
+.variant-card .vc-paths li::before {
+  content: '→';
+  position: absolute;
+  left: 0;
+  color: var(--text-muted);
+}
+.variant-card .vc-paths-empty {
+  padding: 8px 0 0;
+  border-top: 1px solid var(--border-soft);
+  font-family: var(--code);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Palette chip strip — 5 color tokens (bg / panel / accent / vishal / akhil)
+   for this variant. Makes visual divergence visible BEFORE the card is opened. */
+.variant-card .vc-palette {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 2px;
+}
+.variant-card .vc-palette-chip {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border-soft);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+  flex-shrink: 0;
+}
+.variant-card .vc-palette-chip.is-diverged {
+  /* Diverged from canonical — bright ring to call attention. */
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.10), 0 0 0 1px var(--accent-soft);
+}
+.variant-card .vc-palette-label {
+  font-family: var(--code);
+  font-size: 9.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-left: 4px;
+}
+
+/* Scenario-coverage pills — mono badges showing which scenarios this
+   variant has patched. Each pill is clickable, opens that scenario in the
+   variant's browse mode. */
+.variant-card .vc-scenarios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.variant-card .vc-scenario-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  font-family: var(--code);
+  font-size: 10px;
+  color: var(--text-2);
+  background: var(--panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  text-decoration: none;
+}
+.variant-card .vc-scenario-pill:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.variant-card .vc-scenarios-empty {
+  font-family: var(--code);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  font-style: italic;
+}
+.variant-card .vc-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+.variant-card .vc-browse {
+  font-family: var(--code);
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+.variant-card .vc-diff {
+  font-family: var(--code);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+.variant-card .vc-diff:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.variants-page .vp-foot {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 32px;
+}
+.variants-page .vp-load-more {
+  font-family: var(--code);
+  font-size: 12px;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+  padding: 8px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.variants-page .vp-footer-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  font-family: var(--code);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.variants-page .vp-footer-link a { color: var(--accent); }
+
+/* ---- Read-only banner ---- */
+.variant-readonly-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 9000;
+  background: linear-gradient(90deg, rgba(255,138,168,0.16) 0%, rgba(255,138,168,0.08) 100%);
+  border-bottom: 2px solid var(--akhil);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.variant-readonly-banner .vrb-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 8px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: var(--code);
+  font-size: 11.5px;
+  color: var(--text);
+  letter-spacing: 0.03em;
+  flex-wrap: wrap;
+}
+.variant-readonly-banner .vrb-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--akhil);
+  box-shadow: 0 0 10px var(--akhil);
+  flex-shrink: 0;
+}
+.variant-readonly-banner .vrb-text { flex: 1; color: var(--text-2); }
+.variant-readonly-banner .vrb-text b { color: var(--text); font-weight: 600; }
+.variant-readonly-banner .vrb-diff,
+.variant-readonly-banner .vrb-back {
+  color: var(--akhil);
+  text-decoration: none;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  padding: 3px 10px;
+  border: 1px solid #ff8aa866;
+  border-radius: 999px;
+}
+.variant-readonly-banner .vrb-diff:hover,
+.variant-readonly-banner .vrb-back:hover {
+  color: var(--text);
+  border-color: var(--akhil);
+  background: rgba(255,138,168,0.12);
+}
+
+/* Push page content below the fixed banner. */
+body.variant-readonly { padding-top: 38px; }
+/* Offset fixed-position descendants that anchor to the top of the viewport.
+   38px is the banner height; without this, top-anchored fixed UI (toasts,
+   side panels, gear icons, etc.) collides with or hides under the banner.
+   Bottom-anchored fixed UI (advance-pill, fb-trigger, scenario-nav, guide-btn,
+   id-gear) is unaffected and intentionally left alone. */
+body.variant-readonly .dlc-toast { top: 38px; }
+body.variant-readonly .scenario-guide { top: 38px; height: calc(100vh - 38px); }
+body.variant-readonly .id-settings { top: 38px; height: calc(100vh - 38px); }
+body.variant-readonly .scenario-guide-scrim,
+body.variant-readonly .id-settings-scrim,
+body.variant-readonly .fb-scrim,
+body.variant-readonly .dlc-layer {
+  top: 38px;
+  /* These elements use `inset: 0`; override top so the banner stays visible. */
+}
+/* Hide write-side UI in read-only mode. */
+body.variant-readonly .fb-trigger,
+body.variant-readonly .id-set-action.id-set-danger,
+body.variant-readonly .patch-preview .patch-apply-btn,
+body.variant-readonly .patch-preview .patch-discard-link,
+body.variant-readonly .patch-preview-foot,
+body.variant-readonly .patch-applied-countdown {
+  display: none !important;
+}
+body.variant-readonly .patch-preview::after {
+  content: 'read-only · this is someone else\'s variant';
+  display: block;
+  margin-top: 8px;
+  padding: 6px 10px;
+  font-family: var(--code);
+  font-size: 10.5px;
+  color: var(--akhil);
+  background: rgba(255,138,168,0.10);
+  border: 1px dashed var(--akhil);
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+
+/* ---- Diff modal ---- */
+.variant-diff-modal .id-patches-card {
+  /* Inherits from .id-patches-modal sizing — we just narrow it. */
+  max-width: 720px;
+}
+.variant-diff-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 12px;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border-soft);
+  font-family: var(--code);
+  font-size: 11px;
+  align-items: center;
+}
+.variant-diff-row:last-child { border-bottom: none; }
+.variant-diff-row .vdr-label {
+  color: var(--text-2);
+  letter-spacing: 0.04em;
+  word-break: break-all;
+}
+.variant-diff-row .vdr-values {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.variant-diff-row .vdr-canonical {
+  color: var(--text-muted);
+  background: var(--panel-2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-decoration: line-through;
+  text-decoration-color: var(--text-muted);
+}
+.variant-diff-row .vdr-arrow,
+.variant-diff-row .variant-color-arrow {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.variant-diff-row .vdr-variant {
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.variant-color-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .variant-card { transition: none !important; }
+}

@@ -29,6 +29,19 @@
   var VARIANT_PREFIX = '/variant';
   var CSS_VARS_URL = 'css-vars.json'; // relative; build-inject-env copies it next to this file
 
+  // ---- Cross-variant browse mode ----
+  // When ?variant=<id> is in the URL, we fetch THAT variant's applied patches
+  // instead of the signed-in user's, render a read-only banner, and disable
+  // write affordances site-wide via body.variant-readonly.
+  var BROWSE_VARIANT_ID = (function () {
+    try {
+      var u = new URLSearchParams(window.location.search);
+      var v = u.get('variant');
+      return v && /^[0-9a-fA-F-]{8,}$/.test(v) ? v : null;
+    } catch (e) { return null; }
+  })();
+  var browseVariantMeta = null; // { email, id } once resolved
+
   // patch_id -> { patch, ops, appliedAt, supersededBy }
   var appliedPatches = new Map();
   // schemaPath -> [patch_id, ...] (chronological)
@@ -175,10 +188,34 @@
     var regP = loadCssVarRegistry();
     if (!window.doclayerIdentity) return regP;
     var supa = window.doclayerIdentity.getSupabase && window.doclayerIdentity.getSupabase();
-    var variantId = window.doclayerIdentity.getVariantId && window.doclayerIdentity.getVariantId();
-    if (!supa || !variantId) return regP;
+    // Cross-variant browse: prefer the URL-provided variant. Otherwise use the
+    // signed-in user's variant.
+    var variantId = BROWSE_VARIANT_ID
+      || (window.doclayerIdentity.getVariantId && window.doclayerIdentity.getVariantId());
+    if (!supa || !variantId) {
+      // Still install the banner if a variant is requested but supabase is unavailable —
+      // makes the read-only intent obvious even when fetches fail.
+      if (BROWSE_VARIANT_ID) installBrowseBanner(BROWSE_VARIANT_ID, null);
+      return regP;
+    }
 
     return regP.then(function () {
+      if (BROWSE_VARIANT_ID) {
+        // Look up the owner's email-ish label for the banner. With no exposed
+        // auth.users join we fall back to a slice of user_id.
+        return supa.from('variants').select('id, user_id, name').eq('id', BROWSE_VARIANT_ID).maybeSingle()
+          .then(function (vr) {
+            var label = vr && vr.data ? ('viewer-' + String(vr.data.user_id).slice(0, 6)) : BROWSE_VARIANT_ID.slice(0, 8);
+            // If it's the current user's own variant, use their email.
+            var me = window.doclayerIdentity.get && window.doclayerIdentity.get();
+            if (me && me.email && vr && vr.data && me.userId === vr.data.user_id) label = me.email;
+            browseVariantMeta = { id: BROWSE_VARIANT_ID, email: label };
+            installBrowseBanner(BROWSE_VARIANT_ID, label);
+            return null;
+          });
+      }
+      return null;
+    }).then(function () {
       return supa.from('patches')
         .select('id, spec, status, applied_at, superseded_by_id, scenario_id')
         .eq('variant_id', variantId)
@@ -204,6 +241,10 @@
 
   // ---- Live apply (called from comments.js after server 2xx) ----
   function applyPatchLive(patch, patchId) {
+    if (BROWSE_VARIANT_ID) {
+      console.warn('[doclayer-patch] applyPatchLive blocked — read-only variant browse mode');
+      return;
+    }
     var ops = (patch.effective_ops && patch.effective_ops.length) ? patch.effective_ops : (patch.ops || []);
     ops.forEach(applyOpToDom);
     if (patchId) {
@@ -277,6 +318,101 @@
   function getPatchHistoryAtPath(schemaPath) {
     var ids = pathHistory.get(schemaPath) || [];
     return ids.map(function (id) { return appliedPatches.get(id); }).filter(Boolean);
+  }
+
+  // ---- Cross-variant browse banner ----
+  // Idempotent — safe to call multiple times. Adds body.variant-readonly so CSS
+  // can suppress write affordances (comments.js apply button, feedback widget, etc.).
+  // Rewrites internal scenario links to preserve ?variant=<id> so cross-page
+  // navigation keeps you inside the browsed variant.
+  function installBrowseBanner(variantId, label) {
+    if (document.querySelector('.variant-readonly-banner')) return;
+    document.body.classList.add('variant-readonly');
+    var banner = document.createElement('div');
+    banner.className = 'variant-readonly-banner';
+    var displayLabel = label || ('viewer-' + String(variantId).slice(0, 6));
+    banner.innerHTML =
+      '<div class="vrb-inner">' +
+        '<span class="vrb-dot" aria-hidden="true"></span>' +
+        '<span class="vrb-text">browsing <b>' + escapeHtml(displayLabel) + '</b>\'s variant · read-only</span>' +
+        '<a class="vrb-diff" href="variants.html#diff-' + escapeHtml(variantId) + '">diff vs. canonical →</a>' +
+        '<a class="vrb-back" href="' + escapeHtml(stripVariantFromUrl()) + '">switch back to yours →</a>' +
+      '</div>';
+    document.body.insertBefore(banner, document.body.firstChild);
+    // Rewrite all internal .html links currently in the DOM to preserve the
+    // variant param so cross-scenario navigation stays in the browsed variant.
+    rewriteAnchorsForBrowse(document, variantId);
+
+    // Belt-and-suspenders: anything injected after install (comments.js,
+    // identity modals, dynamically-built advance-pills, lifecycle ribbon)
+    // needs the same rewrite — observe DOM mutations and rewrite new links.
+    var linkObserver = new MutationObserver(function (mutations) {
+      for (var i = 0; i < mutations.length; i++) {
+        var m = mutations[i];
+        for (var j = 0; j < m.addedNodes.length; j++) {
+          var node = m.addedNodes[j];
+          if (!node || node.nodeType !== 1) continue;
+          // The node itself if it's an anchor:
+          if (node.matches && node.matches('a[href]')) rewriteAnchorHrefForBrowse(node, variantId);
+          // Descendant anchors:
+          if (node.querySelectorAll) {
+            var anchors = node.querySelectorAll('a[href]');
+            for (var k = 0; k < anchors.length; k++) rewriteAnchorHrefForBrowse(anchors[k], variantId);
+          }
+        }
+        // href attribute changes also need rewriting.
+        if (m.type === 'attributes' && m.target && m.target.matches && m.target.matches('a[href]')) {
+          rewriteAnchorHrefForBrowse(m.target, variantId);
+        }
+      }
+    });
+    linkObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['href'],
+    });
+
+    // Delegated click capture — catches anchors that JS may add+click in the
+    // same tick (before the observer fires) or anchors built lazily via
+    // event handlers. We intercept, mutate href, and let the browser proceed.
+    document.addEventListener('click', function (e) {
+      var t = e.target;
+      if (!(t instanceof Element)) return;
+      var a = t.closest && t.closest('a[href]');
+      if (!a) return;
+      rewriteAnchorHrefForBrowse(a, variantId);
+    }, true /* capture, fires before navigation */);
+  }
+
+  // Decide whether an anchor needs the variant param appended, and append it
+  // idempotently. Skips externals (http/mailto/js), hashes, the read-only
+  // banner's own controls, and anchors that already carry ?variant=.
+  function shouldAnnotateHrefForBrowse(href, a) {
+    if (!href) return false;
+    if (/^(https?:|mailto:|javascript:)/.test(href)) return false;
+    if (href.charAt(0) === '#') return false;
+    if (a && a.classList && (a.classList.contains('vrb-back') || a.classList.contains('vrb-diff'))) return false;
+    if (!/\.html(\?|#|$)/.test(href)) return false;
+    if (/[?&]variant=/.test(href)) return false;
+    return true;
+  }
+  function rewriteAnchorHrefForBrowse(a, variantId) {
+    var href = a.getAttribute('href') || '';
+    if (!shouldAnnotateHrefForBrowse(href, a)) return;
+    var sep = href.indexOf('?') === -1 ? '?' : '&';
+    a.setAttribute('href', href + sep + 'variant=' + encodeURIComponent(variantId));
+  }
+  function rewriteAnchorsForBrowse(root, variantId) {
+    var anchors = (root || document).querySelectorAll('a[href]');
+    for (var i = 0; i < anchors.length; i++) rewriteAnchorHrefForBrowse(anchors[i], variantId);
+  }
+  function stripVariantFromUrl() {
+    try {
+      var u = new URL(window.location.href);
+      u.searchParams.delete('variant');
+      return u.pathname + (u.search ? u.search : '') + u.hash;
+    } catch (e) { return window.location.pathname; }
   }
 
   // ---- Hover popover on [data-patchable] elements ----
@@ -431,6 +567,9 @@
     getAppliedPatches: function () { return Array.from(appliedPatches.values()); },
     fetchAndReplay: fetchAndReplay,
     getCssVarRegistry: function () { return cssVarRegistry ? cssVarRegistry.slice() : []; },
+    isBrowseMode: function () { return !!BROWSE_VARIANT_ID; },
+    getBrowseVariantId: function () { return BROWSE_VARIANT_ID; },
+    getBrowseVariantMeta: function () { return browseVariantMeta; },
     ready: readyPromise,
   };
 })();

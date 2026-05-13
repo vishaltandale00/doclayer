@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+  window.__doclayerConfig = {
+    SUPABASE_URL: '__SUPABASE_URL__',
+    SUPABASE_ANON_KEY: '__SUPABASE_ANON_KEY__'
+  };
+</script>
+<meta charset="UTF-8">
+<title>doclayer — variants gallery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  body { background: var(--bg); }
+</style>
+</head>
+<body data-scenario="variants">
+<div class="variants-page">
+  <div class="series-kicker-row" style="font-family: var(--code); font-size: 12px; color: var(--accent); letter-spacing: 0.1em; margin-bottom: 16px; text-transform: uppercase;">
+    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);margin-right:8px;vertical-align:middle;"></span>
+    <a href="index.html" style="color:inherit;text-decoration:none;">doclayer</a> / variants
+  </div>
+  <h1>variants of the harness</h1>
+  <p class="vp-lede">
+    every viewer who's signed in and made a patch has a variant. each variant is a personalized evolution of the doclayer mock — driven by the comments and patches they've applied. browse below to see how the harness diverges.
+  </p>
+
+  <div class="vp-cta-anon" id="vpCtaAnon" style="display:none">
+    <span>you're not signed in.</span>
+    <button type="button" class="vp-cta-anon-btn" id="vpCtaSignin">sign in to start your own variant →</button>
+  </div>
+
+  <div class="vp-filter-row">
+    <input class="vp-search" type="text" id="vpSearch" placeholder="filter by email handle…" autocomplete="off" spellcheck="false" />
+    <select class="vp-sort" id="vpSort">
+      <option value="patches">most-patches</option>
+      <option value="recent">most-recent</option>
+      <option value="alpha">alphabetical</option>
+    </select>
+    <span class="vp-count" id="vpCount"></span>
+  </div>
+
+  <div class="vp-grid" id="vpGrid">
+    <div class="vp-empty">loading variants…</div>
+  </div>
+
+  <div class="vp-foot" id="vpFoot" style="display:none">
+    <button type="button" class="vp-load-more" id="vpLoadMore">load more</button>
+  </div>
+
+  <div class="vp-footer-link">
+    <a href="index.html">← back to scenarios</a>
+    <span>diff vs. canonical lives on each card · click any variant to browse it read-only</span>
+  </div>
+</div>
+
+<!-- diff modal mount -->
+<div id="vpDiffMount"></div>
+
+<script src="identity.js" defer></script>
+<script src="patch-renderer.js" defer></script>
+<script>
+(function () {
+  'use strict';
+  var PAGE_SIZE = 50;
+  // Five color tokens we render as a per-variant palette chip strip. These
+  // are the most visually loud — bg/panel set the field, accent/vishal/akhil
+  // are the character colors. Matches lib/css-vars.ts schemaPaths.
+  var PALETTE_TOKENS = [
+    { name: '--bg',     schemaPath: '/variant/tokens/color/bg' },
+    { name: '--panel',  schemaPath: '/variant/tokens/color/panel' },
+    { name: '--accent', schemaPath: '/variant/tokens/color/accent' },
+    { name: '--vishal', schemaPath: '/variant/tokens/color/vishal' },
+    { name: '--akhil',  schemaPath: '/variant/tokens/color/akhil' },
+  ];
+
+  var state = {
+    rows: [],            // accumulated rows
+    cursor: null,        // ISO timestamp of the oldest row.lastActiveAt seen
+    exhausted: false,
+    sort: 'patches',
+    search: '',
+    loading: false,
+  };
+
+  // Canonical defaults map: schemaPath -> default value. Built from
+  // lib/variant-schema.json on first need. Used by the diff modal to render
+  // real (vs. placeholder) canonical values for every patchable leaf.
+  var canonicalDefaults = null;
+  var canonicalDefaultsPromise = null;
+
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+    });
+  }
+  function hashStr(s) {
+    var h = 5381;
+    for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+  function colorFor(s) {
+    var h = hashStr(String(s || '').toLowerCase());
+    return 'hsl(' + (h % 360) + ', ' + (60 + (h % 11)) + '%, ' + (55 + ((h >> 4) % 11)) + '%)';
+  }
+  function avatarFor(s) {
+    s = String(s || '');
+    if (s.indexOf('@') > 0) s = s.split('@')[0];
+    var clean = s.replace(/[^A-Za-z0-9]/g, '');
+    return (clean || s || '?').slice(0, 2).toUpperCase();
+  }
+  function relTime(iso) {
+    if (!iso) return '';
+    var t = new Date(iso).getTime();
+    if (isNaN(t)) return '';
+    var diff = Date.now() - t;
+    if (diff < 60 * 1000) return 'just now';
+    if (diff < 3600 * 1000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 86400 * 1000) return Math.floor(diff / 3600000) + 'h ago';
+    if (diff < 7 * 86400 * 1000) return Math.floor(diff / 86400000) + 'd ago';
+    return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+
+  function getSupa() {
+    return window.doclayerIdentity && window.doclayerIdentity.getSupabase && window.doclayerIdentity.getSupabase();
+  }
+
+  // ---- Canonical defaults loader ---------------------------------------
+  // Walks lib/variant-schema.json (mirrored to mocks/variant-schema.json by
+  // the build) and collects every leaf's `default` keyed by its full schema
+  // path (e.g. /variant/tokens/color/accent, /variant/microcopy/series-kicker,
+  // /variant/visibility/next-strip). Cached after first load.
+  function loadCanonicalDefaults() {
+    if (canonicalDefaults) return Promise.resolve(canonicalDefaults);
+    if (canonicalDefaultsPromise) return canonicalDefaultsPromise;
+    canonicalDefaultsPromise = fetch('variant-schema.json', { credentials: 'omit' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('variant-schema.json ' + r.status);
+        return r.json();
+      })
+      .then(function (schema) {
+        var map = new Map();
+        // The schema's top-level "properties" describes the variant manifest.
+        // The path prefix used elsewhere in doclayer is "/variant/<key>/..."
+        // matching how patches address fields. We mirror that prefix here.
+        function walk(node, pathParts) {
+          if (!node || typeof node !== 'object') return;
+          // Inline $ref against the well-known $defs/colorToken/spacing/etc.
+          // — these define a `default` at the property site (not in the ref),
+          // which we capture below. We don't need to expand the ref itself.
+          if (Object.prototype.hasOwnProperty.call(node, 'default')) {
+            map.set('/' + pathParts.join('/'), node.default);
+          }
+          if (node.properties && typeof node.properties === 'object') {
+            for (var k in node.properties) {
+              if (!Object.prototype.hasOwnProperty.call(node.properties, k)) continue;
+              walk(node.properties[k], pathParts.concat([k]));
+            }
+          }
+          // patternProperties (used for blocks) — skip; block-level diffs
+          // are out of scope for v1.
+        }
+        if (schema && schema.properties) {
+          for (var key in schema.properties) {
+            if (!Object.prototype.hasOwnProperty.call(schema.properties, key)) continue;
+            // Build the /variant/<key>/... namespace
+            walk(schema.properties[key], ['variant', key]);
+          }
+        }
+        canonicalDefaults = map;
+        return map;
+      })
+      .catch(function (err) {
+        console.warn('[variants] variant-schema.json fetch failed', err);
+        canonicalDefaults = new Map();
+        return canonicalDefaults;
+      });
+    return canonicalDefaultsPromise;
+  }
+
+  // ---- Per-variant patches digest --------------------------------------
+  // For each variant, examine all applied patches and extract:
+  //   - palette: tokenName -> applied value (overrides schema default)
+  //   - scenarios: Set of scenario_id with at least one applied patch
+  //   - topPaths: intent strings from the 3 most recent applied patches
+  //   - applied / superseded counts
+  function digestPatches(applied) {
+    var palette = {};
+    var scenarios = new Set();
+    applied.forEach(function (p) {
+      if (p.scenario_id) scenarios.add(p.scenario_id);
+      var ops = (p.spec && p.spec.effective_ops && p.spec.effective_ops.length)
+        ? p.spec.effective_ops : ((p.spec && p.spec.ops) || []);
+      ops.forEach(function (op) {
+        if (op.op === 'test' || op.op === 'remove') return;
+        // Match palette tokens.
+        for (var i = 0; i < PALETTE_TOKENS.length; i++) {
+          if (op.path === PALETTE_TOKENS[i].schemaPath) {
+            palette[PALETTE_TOKENS[i].name] = op.value;
+          }
+        }
+      });
+    });
+    return {
+      palette: palette,
+      scenarios: Array.from(scenarios).sort(),
+      topPaths: applied.slice(0, 3).map(function (p) {
+        return (p.spec && p.spec.intent) ? p.spec.intent : (p.scenario_id || 'patch');
+      }),
+    };
+  }
+
+  function paletteChipStyle(tokenName, variantPalette, defaults) {
+    var applied = variantPalette[tokenName];
+    var schemaPath = null;
+    for (var i = 0; i < PALETTE_TOKENS.length; i++) {
+      if (PALETTE_TOKENS[i].name === tokenName) { schemaPath = PALETTE_TOKENS[i].schemaPath; break; }
+    }
+    var canonical = defaults && schemaPath ? defaults.get(schemaPath) : null;
+    var value = applied != null ? applied : canonical;
+    var diverged = applied != null && applied !== canonical;
+    return { value: value || '#000', diverged: diverged };
+  }
+
+  // ---- Fetch ---------------------------------------------------------
+  // Two-step fetch:
+  //   1) variants_public_with_handle view (id, email_handle, last_active_at)
+  //      — handles the auth.users join via SECURITY DEFINER so we get a
+  //      humane handle instead of a slug of user_id.
+  //   2) patches per variant for counts, palette, scenario coverage.
+  // We support cursor pagination on last_active_at descending; the cursor
+  // is the oldest last_active_at currently in state.rows.
+  function fetchVariants(opts) {
+    if (state.loading) return;
+    state.loading = true;
+    opts = opts || {};
+    var append = !!opts.append;
+
+    var supa = getSupa();
+    if (!supa) {
+      $('#vpGrid').innerHTML = '<div class="vp-empty">auth unavailable — variants live in supabase. running offline.</div>';
+      state.loading = false;
+      return;
+    }
+
+    // Kick off the canonical-defaults fetch in parallel with the variant list
+    // so the diff modal opens instantly the first time.
+    loadCanonicalDefaults();
+
+    var q = supa.from('variants_public_with_handle')
+      .select('variant_id, variant_name, email_handle, user_id, last_active_at')
+      .order('last_active_at', { ascending: false })
+      .limit(PAGE_SIZE);
+    if (append && state.cursor) {
+      // Cursor pagination — fetch the next page strictly older than what we
+      // already have. Ties on last_active_at are accepted as duplicates and
+      // dedupe-rejected by id below.
+      q = q.lt('last_active_at', state.cursor);
+    }
+    q.then(function (res) {
+      if (res.error) {
+        // Fall back to the underlying table — happens if the view migration
+        // hasn't been applied yet. Best-effort: use user_id slug as handle.
+        console.warn('[variants] view fetch failed, falling back to variants table', res.error);
+        return supa.from('variants')
+          .select('id, user_id, name, last_active_at, is_public')
+          .eq('is_public', true)
+          .order('last_active_at', { ascending: false })
+          .limit(PAGE_SIZE)
+          .then(function (r2) {
+            if (r2.error) {
+              $('#vpGrid').innerHTML = '<div class="vp-empty">couldn\'t load: ' + escapeHtml(r2.error.message || 'unknown') + '</div>';
+              return null;
+            }
+            return (r2.data || []).map(function (v) {
+              return {
+                variant_id: v.id,
+                variant_name: v.name,
+                user_id: v.user_id,
+                last_active_at: v.last_active_at,
+                email_handle: 'viewer-' + String(v.user_id).slice(0, 6),
+              };
+            });
+          });
+      }
+      return res.data || [];
+    }).then(function (variants) {
+      if (!variants) { state.loading = false; return; }
+      if (!variants.length) {
+        if (append) {
+          state.exhausted = true;
+          renderFoot();
+        } else {
+          $('#vpGrid').innerHTML = '<div class="vp-empty">no public variants yet — be the first to sign in and apply a patch.</div>';
+          state.exhausted = true;
+          renderFoot();
+        }
+        state.loading = false;
+        return;
+      }
+      var ids = variants.map(function (v) { return v.variant_id; });
+      supa.from('patches')
+        .select('variant_id, status, scenario_id, spec, applied_at')
+        .in('variant_id', ids)
+        .order('applied_at', { ascending: false })
+        .then(function (patchRes) {
+          var byVariant = {};
+          (patchRes.data || []).forEach(function (p) {
+            var b = byVariant[p.variant_id] || (byVariant[p.variant_id] = { applied: 0, superseded: 0, appliedList: [] });
+            if (p.status === 'applied') { b.applied++; b.appliedList.push(p); }
+            if (p.status === 'superseded') b.superseded++;
+          });
+
+          var newRows = variants.map(function (v) {
+            var b = byVariant[v.variant_id] || { applied: 0, superseded: 0, appliedList: [] };
+            var digest = digestPatches(b.appliedList);
+            return {
+              id: v.variant_id,
+              userId: v.user_id,
+              email: v.email_handle || ('viewer-' + String(v.user_id || '').slice(0, 6)),
+              variantName: v.variant_name || 'main',
+              lastActiveAt: v.last_active_at,
+              applied: b.applied,
+              superseded: b.superseded,
+              topPaths: digest.topPaths,
+              palette: digest.palette,
+              scenarios: digest.scenarios,
+            };
+          });
+          // Patch in current user's full email if signed in — the view only
+          // exposes the handle, but the session has the full address.
+          var me = window.doclayerIdentity && window.doclayerIdentity.get && window.doclayerIdentity.get();
+          if (me && me.email && me.variantId) {
+            newRows.forEach(function (r) {
+              if (r.id === me.variantId) r.email = me.email;
+            });
+          }
+          if (append) {
+            // Dedupe on id to handle last_active_at ties on the cursor edge.
+            var seen = new Set(state.rows.map(function (r) { return r.id; }));
+            newRows.forEach(function (r) { if (!seen.has(r.id)) state.rows.push(r); });
+          } else {
+            state.rows = newRows;
+          }
+          // Set cursor to the oldest last_active_at currently in state.
+          if (state.rows.length) {
+            state.cursor = state.rows.reduce(function (oldest, r) {
+              if (!oldest) return r.lastActiveAt;
+              return (new Date(r.lastActiveAt || 0) < new Date(oldest || 0)) ? r.lastActiveAt : oldest;
+            }, null);
+          }
+          // Honest exhaustion: only if this page returned fewer than PAGE_SIZE.
+          state.exhausted = variants.length < PAGE_SIZE;
+          state.loading = false;
+          renderGrid();
+          renderFoot();
+        }).catch(function (err) {
+          console.warn('[variants] patches fetch failed', err);
+          // Render at least the variant cards even without patch detail.
+          var newRows = variants.map(function (v) {
+            return {
+              id: v.variant_id, userId: v.user_id,
+              email: v.email_handle || ('viewer-' + String(v.user_id || '').slice(0, 6)),
+              variantName: v.variant_name || 'main',
+              lastActiveAt: v.last_active_at,
+              applied: 0, superseded: 0, topPaths: [], palette: {}, scenarios: [],
+            };
+          });
+          state.rows = append ? state.rows.concat(newRows) : newRows;
+          state.exhausted = variants.length < PAGE_SIZE;
+          state.loading = false;
+          renderGrid();
+          renderFoot();
+        });
+    }).catch(function (err) {
+      console.warn('[variants] fetch threw', err);
+      $('#vpGrid').innerHTML = '<div class="vp-empty">couldn\'t load variants.</div>';
+      state.loading = false;
+    });
+  }
+
+  function applyFilterSort(rows) {
+    var q = state.search.trim().toLowerCase();
+    var filtered = !q ? rows.slice() : rows.filter(function (r) {
+      return (r.email || '').toLowerCase().indexOf(q) !== -1;
+    });
+    if (state.sort === 'patches') {
+      filtered.sort(function (a, b) { return (b.applied || 0) - (a.applied || 0); });
+    } else if (state.sort === 'recent') {
+      filtered.sort(function (a, b) {
+        return new Date(b.lastActiveAt || 0) - new Date(a.lastActiveAt || 0);
+      });
+    } else {
+      filtered.sort(function (a, b) {
+        return (a.email || '').localeCompare(b.email || '');
+      });
+    }
+    return filtered;
+  }
+
+  // Map scenario_id (e.g. "01-bootstrap") → the leading numeric segment for
+  // a compact pill label. Falls back to first 6 chars.
+  function scenarioPillLabel(sc) {
+    var m = String(sc || '').match(/^(\d+)/);
+    return m ? m[1] : String(sc || '').slice(0, 6);
+  }
+  function scenarioHref(sc, variantId) {
+    return escapeHtml(String(sc) + '.html?variant=' + encodeURIComponent(variantId));
+  }
+
+  function renderGrid() {
+    var rows = applyFilterSort(state.rows);
+    var grid = $('#vpGrid');
+    $('#vpCount').textContent = state.rows.length + ' variant' + (state.rows.length === 1 ? '' : 's');
+    if (!rows.length) {
+      grid.innerHTML = '<div class="vp-empty">no matches.</div>';
+      return;
+    }
+    var defaults = canonicalDefaults; // may be null on first paint; acceptable
+    grid.innerHTML = rows.map(function (r) {
+      // Avatar ring: prefer this variant's actual --accent if patched,
+      // otherwise the schema canonical accent; fall back to hash color if
+      // the canonical map isn't loaded yet.
+      var accentSchema = '/variant/tokens/color/accent';
+      var accentFromPatch = r.palette['--accent'];
+      var accentCanonical = defaults ? defaults.get(accentSchema) : null;
+      var ringColor = accentFromPatch || accentCanonical || colorFor(r.email);
+      var avatarBg = colorFor(r.email);
+      var avatar = avatarFor(r.email);
+      var pathsHtml = r.topPaths.length
+        ? '<ul class="vc-paths">' + r.topPaths.slice(0, 3).map(function (p) {
+            return '<li>' + escapeHtml(String(p).slice(0, 60)) + '</li>';
+          }).join('') + '</ul>'
+        : '<div class="vc-paths-empty">no applied patches yet</div>';
+      var supSeg = r.superseded ? ' · ' + r.superseded + ' superseded' : '';
+
+      // 5-chip palette strip — visual divergence at a glance.
+      var paletteHtml = '<div class="vc-palette" aria-label="this variant\'s palette">' +
+        PALETTE_TOKENS.map(function (tok) {
+          var chip = paletteChipStyle(tok.name, r.palette, defaults);
+          var cls = 'vc-palette-chip' + (chip.diverged ? ' is-diverged' : '');
+          var title = tok.name + (chip.diverged ? ' (patched)' : ' (canonical)') + ': ' + chip.value;
+          return '<span class="' + cls + '" style="background:' + escapeHtml(String(chip.value)) + '" title="' + escapeHtml(title) + '"></span>';
+        }).join('') +
+        '</div>';
+
+      // Scenario coverage pills — which scenarios are patched.
+      var scenariosHtml;
+      if (r.scenarios.length) {
+        scenariosHtml = '<div class="vc-scenarios" aria-label="scenarios with patches">' +
+          r.scenarios.map(function (sc) {
+            return '<a class="vc-scenario-pill" href="' + scenarioHref(sc, r.id) +
+                   '" title="open ' + escapeHtml(sc) + ' in this variant"' +
+                   ' onclick="event.stopPropagation();">' +
+              escapeHtml(scenarioPillLabel(sc)) +
+              '</a>';
+          }).join('') +
+        '</div>';
+      } else {
+        scenariosHtml = '<div class="vc-scenarios-empty">no scenarios patched</div>';
+      }
+
+      return '<a class="variant-card" href="index.html?variant=' + escapeHtml(r.id) + '" data-variant-id="' + escapeHtml(r.id) + '"' +
+          ' style="--vc-ring:' + escapeHtml(String(ringColor)) + ';">' +
+        '<div class="vc-head">' +
+          '<span class="variant-card-avatar" style="background:' + escapeHtml(avatarBg) + ';border:2px solid ' + escapeHtml(String(ringColor)) + ';">' + escapeHtml(avatar) + '</span>' +
+          '<div class="vc-id">' +
+            '<div class="vc-email">' + escapeHtml(r.email) + '</div>' +
+            '<div class="vc-sub">variant <code>\'' + escapeHtml(r.variantName) + '\'</code> · ' + relTime(r.lastActiveAt) + '</div>' +
+          '</div>' +
+        '</div>' +
+        paletteHtml +
+        scenariosHtml +
+        '<div class="vc-stats">' +
+          '<b>' + r.applied + '</b> applied' + supSeg +
+        '</div>' +
+        pathsHtml +
+        '<div class="vc-actions">' +
+          '<span class="vc-browse">browse →</span>' +
+          '<button type="button" class="vc-diff" data-variant-id="' + escapeHtml(r.id) + '" data-email="' + escapeHtml(r.email) + '">diff vs. canonical</button>' +
+        '</div>' +
+      '</a>';
+    }).join('');
+    // Wire diff buttons.
+    Array.prototype.forEach.call(grid.querySelectorAll('.vc-diff'), function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openDiffModal(btn.getAttribute('data-variant-id'), btn.getAttribute('data-email'));
+      });
+    });
+  }
+
+  function renderFoot() {
+    var foot = $('#vpFoot');
+    // Honesty: only show load-more if there's plausibly more to load
+    // (i.e. last page returned a full PAGE_SIZE) AND we have at least one row.
+    var show = !state.exhausted && state.rows.length >= PAGE_SIZE;
+    foot.style.display = show ? 'flex' : 'none';
+    var btn = $('#vpLoadMore');
+    if (btn) {
+      btn.disabled = state.loading;
+      btn.textContent = state.loading ? 'loading…' : 'load more';
+    }
+  }
+
+  // ---- Diff modal ----
+  function openDiffModal(variantId, email) {
+    var supa = getSupa();
+    var mount = $('#vpDiffMount');
+    mount.innerHTML =
+      '<div class="id-modal variant-diff-modal" role="dialog" aria-modal="true">' +
+        '<div class="id-modal-scrim"></div>' +
+        '<div class="id-patches-card" role="document">' +
+          '<div class="id-patches-head">' +
+            '<span>diff vs. canonical · ' + escapeHtml(email || variantId.slice(0, 8)) + '</span>' +
+            '<button class="id-patches-close" type="button" aria-label="close">×</button>' +
+          '</div>' +
+          '<div class="id-patches-body"><div class="id-patches-empty">loading diffs…</div></div>' +
+        '</div>' +
+      '</div>';
+    document.body.classList.add('id-modal-open');
+    function shut() { mount.innerHTML = ''; document.body.classList.remove('id-modal-open'); }
+    mount.querySelector('.id-modal-scrim').addEventListener('click', shut);
+    mount.querySelector('.id-patches-close').addEventListener('click', shut);
+    document.addEventListener('keydown', function esc(e) {
+      if (e.key === 'Escape') { shut(); document.removeEventListener('keydown', esc); }
+    });
+
+    if (!supa) {
+      mount.querySelector('.id-patches-body').innerHTML = '<div class="id-patches-empty">auth unavailable.</div>';
+      return;
+    }
+    // Race the patch fetch with the canonical-defaults load; render after both.
+    var fetchP = supa.from('patches')
+      .select('id, scenario_id, spec, status, applied_at')
+      .eq('variant_id', variantId)
+      .eq('status', 'applied')
+      .order('scenario_id', { ascending: true });
+    Promise.all([fetchP, loadCanonicalDefaults()]).then(function (results) {
+      var res = results[0];
+      var defaults = results[1] || new Map();
+      var body = mount.querySelector('.id-patches-body');
+      if (!body) return; // modal closed
+      if (res.error) { body.innerHTML = '<div class="id-patches-empty">couldn\'t load.</div>'; return; }
+      var rows = res.data || [];
+      if (!rows.length) { body.innerHTML = '<div class="id-patches-empty">no applied patches yet — this variant matches canonical.</div>'; return; }
+      // Group by scenario.
+      var groups = {};
+      rows.forEach(function (r) {
+        (groups[r.scenario_id] = groups[r.scenario_id] || []).push(r);
+      });
+      var registry = (window.doclayerPatchRenderer && window.doclayerPatchRenderer.getCssVarRegistry()) || [];
+      var byPath = {};
+      registry.forEach(function (e) { byPath[e.schemaPath] = e; });
+
+      var html = '';
+      Object.keys(groups).sort().forEach(function (sc) {
+        var list = groups[sc];
+        var leafCount = 0;
+        list.forEach(function (p) {
+          var ops = (p.spec && p.spec.effective_ops && p.spec.effective_ops.length)
+            ? p.spec.effective_ops : ((p.spec && p.spec.ops) || []);
+          leafCount += ops.filter(function (o) { return o.op !== 'test'; }).length;
+        });
+        html += '<section class="pm-group">' +
+          '<div class="pm-scenario-header">' + escapeHtml(sc) + ' · ' + leafCount + ' leaf' + (leafCount === 1 ? '' : 'es') + '</div>';
+        list.forEach(function (p) {
+          var ops = (p.spec && p.spec.effective_ops && p.spec.effective_ops.length)
+            ? p.spec.effective_ops : ((p.spec && p.spec.ops) || []);
+          ops.forEach(function (op) {
+            if (op.op === 'test') return;
+            html += renderDiffRow(op, byPath, defaults);
+          });
+        });
+        html += '</section>';
+      });
+      body.innerHTML = html;
+    }).catch(function (err) {
+      var body = mount.querySelector('.id-patches-body');
+      if (body) body.innerHTML = '<div class="id-patches-empty">couldn\'t load.</div>';
+      console.warn('[variants] diff modal fetch failed', err);
+    });
+  }
+
+  function renderDiffRow(op, byPath, defaults) {
+    var path = op.path || '';
+    var entry = byPath[path];
+    var label = path;
+    var canonical = '';
+    var variant = (op.op === 'remove') ? '(removed)' : String(op.value == null ? '' : op.value);
+    var swatch = '';
+
+    // Resolve the canonical value with this priority:
+    //   1. css-var registry default (loaded from css-vars.json)
+    //   2. variant-schema.json default (covers microcopy, visibility,
+    //      and tokens that aren't in the CSS-var registry)
+    //   3. structural fallbacks (visibility default-true, etc.)
+    if (entry) {
+      label = entry.name + '  ·  ' + path;
+      canonical = String(entry.default);
+      if (entry.schemaPath.indexOf('/color/') !== -1) {
+        swatch = '<span class="variant-color-swatch" style="background:' + escapeHtml(canonical) + '"></span>' +
+                 '<span class="variant-color-arrow">→</span>' +
+                 '<span class="variant-color-swatch" style="background:' + escapeHtml(variant) + '"></span>';
+      }
+    } else if (path.indexOf('/variant/microcopy/') === 0) {
+      label = 'microcopy · ' + path.replace('/variant/microcopy/', '');
+      // Real canonical text from the schema default — no more "(canonical text)"
+      // placeholder. Falls back to "(no default)" only if the schema is silent.
+      var def = defaults && defaults.get(path);
+      canonical = (def != null) ? String(def) : '(no default)';
+    } else if (path.indexOf('/variant/visibility/') === 0) {
+      label = 'visibility · ' + path.replace('/variant/visibility/', '');
+      // Schema-driven canonical: most visibility leaves default to true (shown).
+      var visDef = defaults && defaults.get(path);
+      var canonicalShown = (visDef === undefined) ? true : !!visDef;
+      canonical = canonicalShown ? 'shown' : 'hidden';
+      variant = (op.value === false) ? 'hidden' : 'shown';
+    } else {
+      // Generic patchable path not in the CSS-var registry — try schema.
+      var generic = defaults && defaults.get(path);
+      if (generic !== undefined) canonical = String(generic);
+    }
+
+    return '<div class="variant-diff-row">' +
+      '<div class="vdr-label">' + escapeHtml(label) + '</div>' +
+      '<div class="vdr-values">' +
+        (swatch ? swatch : (
+          '<code class="vdr-canonical">' + escapeHtml(canonical) + '</code>' +
+          '<span class="vdr-arrow">→</span>' +
+          '<code class="vdr-variant">' + escapeHtml(variant) + '</code>'
+        )) +
+      '</div>' +
+    '</div>';
+  }
+
+  // ---- Wire UI ----
+  document.addEventListener('DOMContentLoaded', function () {
+    $('#vpSearch').addEventListener('input', function (e) {
+      state.search = e.target.value || '';
+      renderGrid();
+    });
+    $('#vpSort').addEventListener('change', function (e) {
+      state.sort = e.target.value;
+      renderGrid();
+    });
+    $('#vpCtaSignin').addEventListener('click', function () {
+      if (window.doclayerIdentity && window.doclayerIdentity.openModal) window.doclayerIdentity.openModal({});
+    });
+    $('#vpLoadMore').addEventListener('click', function () {
+      if (state.exhausted || state.loading) return;
+      fetchVariants({ append: true });
+    });
+
+    function paintAnonCta() {
+      var me = window.doclayerIdentity && window.doclayerIdentity.get && window.doclayerIdentity.get();
+      $('#vpCtaAnon').style.display = me ? 'none' : 'flex';
+    }
+    paintAnonCta();
+    if (window.doclayerIdentity && window.doclayerIdentity.onChange) {
+      window.doclayerIdentity.onChange(paintAnonCta);
+    }
+
+    // Defer until identity has had a chance to initialize so the current
+    // user's email shows up correctly on their own card.
+    function afterFetch() {
+      var hash = window.location.hash || '';
+      var m = hash.match(/^#diff-([0-9a-fA-F-]{8,})$/);
+      if (m) {
+        var vid = m[1];
+        var row = state.rows.filter(function (r) { return r.id === vid; })[0];
+        openDiffModal(vid, row ? row.email : vid.slice(0, 8));
+      }
+    }
+    var origFetch = fetchVariants;
+    fetchVariants = function () {
+      var r = origFetch.apply(null, arguments);
+      setTimeout(afterFetch, 600);
+      return r;
+    };
+    if (window.doclayerIdentity && window.doclayerIdentity.ensure) {
+      setTimeout(fetchVariants, 200);
+    } else {
+      fetchVariants();
+    }
+  });
+})();
+</script>
+</body>
+</html>

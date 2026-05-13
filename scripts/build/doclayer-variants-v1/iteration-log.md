@@ -136,3 +136,25 @@ Score arc on Phase 4: **6.48 → 8.14 → 9.10** across 3 review attempts. Revie
 **Phase 4 ships.** Halfway+ point: 5 of 8 phases complete. Best score 9.28.
 
 **Next iteration**: Phase 5 (Variants gallery) — list all public variants, browse another viewer's variant read-only, diff view.
+
+## Iteration 13 — 2026-05-13T00:27Z
+
+**Phase 5** (Variants gallery). Build agent shipped: new `mocks/variants.html` (442 LOC) with avatar grid, search/sort/empty state, top-3 intents, browse/diff actions; cross-browse mode in `mocks/patch-renderer.js` (~85 LOC) with `?variant=<id>` query param, read-only banner, body class overrides, link rewriting at install; diff modal reusing `pm-*` classes; index.html + guide.html link to gallery; 395 LOC of new CSS.
+
+Adversarial scored **6.48/10 weighted — FIX** (unweighted 7.17). The phase that exists to sell the thesis at the population level failed at thesis-selling.
+
+3 HIGH-severity items: (1) cards are interchangeable — no visual preview of the variant's aesthetic, top-3 intents are the only character surface; (2) diff modal renders microcopy as `(canonical text) → variant value` — that's a placeholder not a diff, the canonical IS knowable but isn't surfaced; (3) `viewer-<6chars>` slugs strip humanity — gallery should feel populated by PEOPLE not database IDs.
+
+3 medium/low: link rewriting only runs once at install (dynamic links escape browse mode), fixed-position elements may collide with banner, "load more" is a silent no-op.
+
+**Next iteration**: Phase 5 fix agent on 6 items. 2 attempts remaining.
+
+## Iteration 14 — 2026-05-13T00:39Z
+
+**Phase 5 fix iter 1 — PASS at 9.00/10.** All 6 must-fix items landed. The thesis-selling pieces: 5-chip palette strip on each card (`--bg/--panel/--accent/--vishal/--akhil`) showing actual variant values, scenario coverage pills linking deep into browse mode, avatar ring colored with variant's actual accent. Diff modal now resolves real canonical from `lib/variant-schema.json` walk — no more `(canonical text)` placeholder. New migration `20260513000000_variants_public_handle.sql` exposes `email_handle = split_part(email,'@',1)` via SECURITY DEFINER view — humans not slugs. MutationObserver + capture-click handler for dynamic links. Top-anchored fixed elements offset 38px under `body.variant-readonly`. Real cursor pagination on `last_active_at`.
+
+Score arc on Phase 5: **6.48 → 9.00** across 2 review attempts.
+
+**Phase 5 ships. 6 of 8 phases complete.** Best score 9.28. Three migrations pending Supabase apply (variants_v1, versions_unique, variants_public_handle).
+
+**Next iteration**: Phase 6 (Architect prompt + prose escape hatch) — refined architect-side. Phase 3 already implemented most of this; Phase 6 polishes the prose-routing detection and revision-variant client rendering.
