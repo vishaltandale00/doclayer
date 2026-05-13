@@ -189,5 +189,12 @@ export default async function handler(
     detail: { restored_patch_ids: restoredIds },
   });
 
-  res.status(200).json({ version_id: versionId, restored_patch_ids: restoredIds });
+  // Return the post-undo doc so the client can canonical-replay against
+  // :root rather than synthesizing inverse ops locally (which silently
+  // no-ops on macro-only patches). See fix: undo-macro-revert-desync.
+  res.status(200).json({
+    version_id: versionId,
+    restored_patch_ids: restoredIds,
+    doc: nextDoc,
+  });
 }

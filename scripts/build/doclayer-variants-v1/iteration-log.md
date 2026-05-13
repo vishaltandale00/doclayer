@@ -101,3 +101,38 @@ The reviewer earned its keep on Phase 3 — caught three production-critical cor
 Phase 3 ships. Two migrations pending Supabase apply: `20260512000000_variants_v1.sql` + `20260512000001_versions_unique.sql`.
 
 **Next iteration**: Phase 4 (Client patch flow) — frontend integration: patch preview, apply button, 60s undo countdown, patch-stack popover. Builds on the now-stable server pipeline.
+
+## Iteration 10 — 2026-05-13T00:00Z
+
+**Phase 4** (Client patch flow). Build agent shipped: new `mocks/patch-renderer.js` (365 LOC) exposing `applyPatchLive` / `undoPatch` / `getPatchHistoryAtPath`; `mocks/comments.js` extended with patch preview UI + apply flow + 60s undo countdown; `mocks/identity.js` settings panel adds "your patches" section; `mocks/style.css` +225 LOC for `.patch-preview` / `.patched-hidden` / `.patch-stack-popover` etc; script tag wired to all 11 scenarios + index.
+
+Adversarial scored **6.48/10 — REJECT**. 5 must-fix items, 3 HIGH:
+1. **Undo macro-revert desync**: local reversal silently no-ops on macro-only patches (no paired test op on same path), so server reverts but DOM stays mutated.
+2. **Preview hides structural ops**: macro-only patches render as "(no diff)" but apply real structural changes — viewer applies blind.
+3. **CSS-var registry drift**: client reimplements the schema-path → CSS-var-name mapping with regexes instead of consuming `lib/css-vars.ts`.
+
+Plus 2 mediums (anonymous apply affordance shows enabled button that 401s; 410 GONE + 422 SMOKE_FAILED scenario + VERSION_FORK_DETECTED.reload() handling incomplete).
+
+XSS surface is clean (textContent throughout, escapeHtml in popover). The killers are correctness bugs, not security.
+
+**Next iteration**: Phase 4 fix agent on 5 items. 2 attempts remaining before stuck escalation.
+
+## Iteration 11 — 2026-05-13T00:06Z
+
+**Phase 4 fix iter 1**. All 5 prior must-fix items landed: undo now server-authoritative (returns doc, client calls `fetchAndReplay`), preview shows macro+effective_ops+block formatting, css-vars exported to `mocks/css-vars.json` (single source of truth, regex mapping removed), anonymous viewers get "sign in to apply" CTA opening magic-link modal, 410+422 SMOKE scenario+VERSION_FORK_DETECTED all properly mapped.
+
+Adversarial re-review scored **8.14/10 — FIX** (up from 6.48). All 5 fixes verifiably landed. The 2 pre-existing weaknesses (settings "your patches" pane shallow, popover missing macro info) weren't on the must-fix list and stayed below threshold, dragging weighted score under 9.0.
+
+**2nd review attempt complete. 1 attempt remaining.** 4 items for PASS: build the full "your patches" modal, surface macro info in popover, drop the same-count gate on effective_ops, AbortController for one-shot listener.
+
+**Next iteration**: Phase 4 fix iter 2 on 4 polish items. Score should clear 9.0.
+
+## Iteration 12 — 2026-05-13T00:17Z
+
+**Phase 4 fix iter 2 — PASS at 9.10/10.** All 4 polish items landed: full "your patches" modal (groups by scenario, pagination via applied_at cursor, status badges, superseded-by scroll-to-flash, head-only count queries no longer load spec payloads), popover shows `macro: <kind>` badges with blockId fragments, effective_ops gate dropped (always renders when patch.macro present), AbortController scopes identity-ready listener with `doclayer:modal-closed` event + MutationObserver bubble-removal abort.
+
+Score arc on Phase 4: **6.48 → 8.14 → 9.10** across 3 review attempts. Reviewer's 3 categories of critical bugs (undo macro desync, structural-ops invisibility, CSS-var registry drift) all closed. Anonymous fallback proper. Error states distinctly mapped. Cross-scenario state survives reload via Supabase-driven replay.
+
+**Phase 4 ships.** Halfway+ point: 5 of 8 phases complete. Best score 9.28.
+
+**Next iteration**: Phase 5 (Variants gallery) — list all public variants, browse another viewer's variant read-only, diff view.

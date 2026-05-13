@@ -273,6 +273,13 @@
       modalPending.reject(new Error('cancelled'));
     }
     modalPending = null;
+    // Fire a modal-closed event so listeners waiting on identity-ready can
+    // tear down if the user dismisses the modal without signing in.
+    try {
+      window.dispatchEvent(new CustomEvent('doclayer:modal-closed', {
+        detail: { reason: reason || 'unknown' },
+      }));
+    } catch (e) { /* swallow */ }
   }
 
   function showSentConfirmation(card, email) {
@@ -502,6 +509,9 @@
     getVariantId: function () { return (currentIdentity && currentIdentity.variantId) || null; },
     getSupabase: function () { return supa; },
     deleteMyVariant: deleteMyVariant,
+    // Open the magic-link modal. Used by patch preview "sign in to apply"
+    // affordance for anonymous viewers (see comments.js renderPatchPreview).
+    openModal: function (opts) { return openModal(opts || {}); },
   };
   window.doclayerEnsureIdentity = function () {
     return window.doclayerIdentity.ensure();
@@ -617,6 +627,7 @@
             (id.email
               ? '<button class="id-set-action id-set-signout" type="button">sign out</button>'
               : '<button class="id-set-action id-set-change" type="button">change handle</button>') +
+            patchesSectionHtml(id) +
             '<button class="id-set-action id-set-see" type="button">see all your comments →</button>' +
             '<button class="id-set-action id-set-danger id-set-forget" type="button">' +
               (id.email ? 'delete my variant + all comments' : 'forget me') +
@@ -624,6 +635,7 @@
           '</div>';
       }
       bindPanel(id);
+      refreshPatchesSummary();
     }
 
     function bindPanel(id) {
@@ -661,6 +673,11 @@
         shut();
         openImprovementsModal();
       });
+      var patches = panel.querySelector('.id-set-patches-link');
+      if (patches) patches.addEventListener('click', function () {
+        shut();
+        openPatchesModal();
+      });
     }
 
     function open() {
@@ -685,6 +702,220 @@
 
     paintGear();
     window.doclayerIdentity.onChange(function () { paintGear(); if (panel.classList.contains('is-open')) renderPanel(); });
+  }
+
+  // -------- patches summary (Phase 4) -------------------------
+  // Quick patch-count summary for the gear panel. Reads from
+  // doclayerPatchRenderer's in-memory cache for the current scenario
+  // and supplements with a Supabase count for the rest. Best-effort.
+  function patchesSectionHtml(id) {
+    if (!id || !id.variantId || !supa) return '';
+    // Render placeholder; the panel re-renders on identity changes which
+    // happen rarely — for live counts we update after a fetch.
+    return '<div class="id-set-patches" data-patches-summary>' +
+      '<span class="id-set-patches-label">your patches</span> · ' +
+      '<b data-patches-applied>·</b> applied · ' +
+      '<b data-patches-superseded>·</b> superseded · ' +
+      '<button class="id-set-patches-link" type="button">see all →</button>' +
+      '</div>';
+  }
+  function refreshPatchesSummary() {
+    var el = document.querySelector('[data-patches-summary]');
+    if (!el || !supa || !currentIdentity || !currentIdentity.variantId) return;
+    // Count-only queries — head:true with exact count avoids loading spec payloads.
+    function countByStatus(status) {
+      return supa.from('patches')
+        .select('id', { count: 'exact', head: true })
+        .eq('variant_id', currentIdentity.variantId)
+        .eq('status', status);
+    }
+    Promise.all([countByStatus('applied'), countByStatus('superseded')]).then(function (rs) {
+      var applied = (rs[0] && typeof rs[0].count === 'number') ? rs[0].count : 0;
+      var superseded = (rs[1] && typeof rs[1].count === 'number') ? rs[1].count : 0;
+      var a = el.querySelector('[data-patches-applied]');
+      var s = el.querySelector('[data-patches-superseded]');
+      if (a) a.textContent = String(applied);
+      if (s) s.textContent = String(superseded);
+    }).catch(function () { /* swallow */ });
+  }
+
+  // Format an ISO timestamp as a relative ("2h ago") or absolute date if older.
+  function formatRelativeTime(iso) {
+    if (!iso) return '';
+    var t = new Date(iso).getTime();
+    if (isNaN(t)) return '';
+    var diff = Date.now() - t;
+    if (diff < 60 * 1000) return 'just now';
+    if (diff < 60 * 60 * 1000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 24 * 60 * 60 * 1000) return Math.floor(diff / 3600000) + 'h ago';
+    if (diff < 7 * 24 * 60 * 60 * 1000) return Math.floor(diff / 86400000) + 'd ago';
+    return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  // ---- Patches modal (Phase 4) ----
+  // Paginated list of patches across all scenarios, grouped by scenario.
+  // Each row: intent, applied_at (relative), status badge, superseded_by ref.
+  // Pagination via applied_at < lastSeenAppliedAt cursor (stable under inserts).
+  var PATCHES_PAGE_SIZE = 50;
+  function openPatchesModal() {
+    var existing = document.querySelector('.id-patches-modal');
+    if (existing) existing.parentNode.removeChild(existing);
+    var wrap = document.createElement('div');
+    wrap.className = 'id-modal id-patches-modal';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-modal', 'true');
+    wrap.innerHTML =
+      '<div class="id-modal-scrim"></div>' +
+      '<div class="id-patches-card" role="document">' +
+        '<div class="id-patches-head">' +
+          '<span>your patches across the loop</span>' +
+          '<button class="id-patches-close" type="button" aria-label="close">×</button>' +
+        '</div>' +
+        '<div class="id-patches-body">' +
+          '<div class="id-patches-empty">loading…</div>' +
+        '</div>' +
+        '<div class="id-patches-foot" style="display:none">' +
+          '<button class="pm-load-more-btn" type="button">load more</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    document.body.classList.add('id-modal-open');
+
+    function shut() {
+      if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+      document.body.classList.remove('id-modal-open');
+    }
+    wrap.querySelector('.id-modal-scrim').addEventListener('click', shut);
+    wrap.querySelector('.id-patches-close').addEventListener('click', shut);
+    document.addEventListener('keydown', function esc(e) {
+      if (e.key === 'Escape') { shut(); document.removeEventListener('keydown', esc); }
+    });
+
+    if (!supa || !currentIdentity || !currentIdentity.variantId) {
+      wrap.querySelector('.id-patches-body').innerHTML =
+        '<div class="id-patches-empty">sign in to track patches across scenarios.</div>';
+      return;
+    }
+
+    // State: accumulated rows by id (so we can resolve superseded_by → row);
+    // cursor is the oldest applied_at we've seen; firstPage flag drives the
+    // empty-state vs append behavior.
+    var allRows = [];
+    var rowById = {};
+    var cursor = null; // applied_at string; null = no cursor (fetch newest)
+    var loading = false;
+    var exhausted = false;
+
+    function fetchPage() {
+      if (loading || exhausted) return Promise.resolve();
+      loading = true;
+      var q = supa.from('patches')
+        .select('id, scenario_id, spec, status, applied_at, superseded_by_id')
+        .eq('variant_id', currentIdentity.variantId)
+        .order('applied_at', { ascending: false })
+        .limit(PATCHES_PAGE_SIZE);
+      if (cursor) q = q.lt('applied_at', cursor);
+      return q.then(function (res) {
+        loading = false;
+        if (res.error) {
+          wrap.querySelector('.id-patches-body').innerHTML =
+            '<div class="id-patches-empty">couldn\'t load.</div>';
+          return;
+        }
+        var rows = res.data || [];
+        if (rows.length < PATCHES_PAGE_SIZE) exhausted = true;
+        if (rows.length) {
+          rows.forEach(function (r) {
+            if (!rowById[r.id]) { rowById[r.id] = r; allRows.push(r); }
+          });
+          cursor = rows[rows.length - 1].applied_at;
+        }
+        renderList();
+      }).catch(function () {
+        loading = false;
+        wrap.querySelector('.id-patches-body').innerHTML =
+          '<div class="id-patches-empty">couldn\'t load.</div>';
+      });
+    }
+
+    function statusBadgeClass(status) {
+      if (status === 'applied') return 'pm-badge pm-badge-applied';
+      if (status === 'superseded') return 'pm-badge pm-badge-superseded';
+      if (status === 'undone') return 'pm-badge pm-badge-undone';
+      return 'pm-badge';
+    }
+
+    function renderList() {
+      var body = wrap.querySelector('.id-patches-body');
+      var foot = wrap.querySelector('.id-patches-foot');
+      if (!allRows.length) {
+        body.innerHTML = '<div class="id-patches-empty">no patches yet — comment somewhere and let the architect propose one.</div>';
+        foot.style.display = 'none';
+        return;
+      }
+      // Group by scenario, preserving newest-first order within each group.
+      var groups = [];
+      var groupIdx = {};
+      allRows.forEach(function (r) {
+        var sc = r.scenario_id || 'unknown';
+        if (groupIdx[sc] === undefined) {
+          groupIdx[sc] = groups.length;
+          groups.push({ scenario: sc, rows: [] });
+        }
+        groups[groupIdx[sc]].rows.push(r);
+      });
+
+      var html = '';
+      groups.forEach(function (g) {
+        html += '<section class="pm-group">' +
+          '<a class="pm-scenario-header" href="' + escapeHtml(g.scenario) + '.html">' +
+            escapeHtml(g.scenario) + ' · ' + g.rows.length +
+          '</a>' +
+          '<ul class="pm-list">';
+        g.rows.forEach(function (r) {
+          var intent = (r.spec && r.spec.intent) || '(no intent)';
+          var when = formatRelativeTime(r.applied_at);
+          var sup = '';
+          if (r.superseded_by_id) {
+            sup = '<a class="pm-superseded-by" href="#pm-row-' + escapeHtml(String(r.superseded_by_id)) + '"' +
+              ' data-target-id="' + escapeHtml(String(r.superseded_by_id)) + '">' +
+              'superseded by patch ' + escapeHtml(String(r.superseded_by_id).slice(0, 8)) +
+              '</a>';
+          }
+          html += '<li class="pm-patch-row pm-' + escapeHtml(r.status || 'unknown') + '" id="pm-row-' + escapeHtml(String(r.id)) + '">' +
+            '<span class="pm-intent">' + escapeHtml(intent) + '</span>' +
+            '<span class="pm-when" title="' + escapeHtml(r.applied_at || '') + '">' + escapeHtml(when) + '</span>' +
+            '<span class="' + statusBadgeClass(r.status) + '">' + escapeHtml(r.status || '') + '</span>' +
+            (sup ? '<span class="pm-superseded-ref">' + sup + '</span>' : '') +
+            '</li>';
+        });
+        html += '</ul></section>';
+      });
+      body.innerHTML = html;
+      // Wire up superseded-by links to scroll to the target row within the modal.
+      body.querySelectorAll('.pm-superseded-by').forEach(function (a) {
+        a.addEventListener('click', function (e) {
+          var id = a.getAttribute('data-target-id');
+          var target = body.querySelector('#pm-row-' + cssEscapeId(id));
+          if (target) {
+            e.preventDefault();
+            target.classList.add('pm-flash');
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(function () { target.classList.remove('pm-flash'); }, 1400);
+          }
+        });
+      });
+      foot.style.display = exhausted ? 'none' : 'flex';
+    }
+
+    function cssEscapeId(s) {
+      if (window.CSS && CSS.escape) return CSS.escape(s);
+      return String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+    }
+
+    wrap.querySelector('.pm-load-more-btn').addEventListener('click', function () { fetchPage(); });
+
+    fetchPage();
   }
 
   // -------- cross-scenario improvements modal -----------------

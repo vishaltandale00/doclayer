@@ -314,7 +314,7 @@
 
       function handle(out) {
         if (out.status >= 200 && out.status < 300 && out.body && out.body.response) {
-          complete(out.body.response, false, out.body.routedTo);
+          complete(out.body.response, false, out.body.routedTo, out.body.patch || null);
           return;
         }
         if (out.status === 503 && out.body && out.body.fallback === 'canned') {
@@ -335,7 +335,7 @@
         submit.disabled = false;
       }
 
-      function complete(responseText, isCanned, routedTo) {
+      function complete(responseText, isCanned, routedTo, patch) {
         drafting.classList.remove('on');
         var comment = {
           id: makeId(),
@@ -349,6 +349,7 @@
           canned: !!isCanned,
           createdAt: Date.now(),
           resolved: false,
+          patch: patch || null,
         };
         // Swap to thread view, but type the architect response in.
         switchToThread(bubble, comment, responseText);
@@ -370,6 +371,7 @@
       +   '<span class="dlc-msg-tag">architect</span>'
       +   '<span class="dlc-msg-text"></span>'
       + '</div>'
+      + '<div class="dlc-patch-slot"></div>'
       + '<div class="dlc-foot dlc-foot-thread"><button class="dlc-resolve" type="button">resolve</button></div>';
 
     var archEl = body.querySelector('.dlc-msg-arch .dlc-msg-text');
@@ -377,12 +379,418 @@
       comment.response = responseText;
       bubbles.push({ comment: comment, bubble: bubble });
       pendingAnchor = null;
+      // Render the patch preview AFTER architect types — feels causal.
+      if (comment.patch) {
+        renderPatchPreview(bubble, comment);
+      }
       try {
         window.dispatchEvent(new CustomEvent('doclayer:comment-saved', { detail: comment }));
       } catch (e) {}
     });
 
     wireThread(bubble, comment);
+  }
+
+  // ---- Patch preview UI ----
+  // Renders an op diff card inside the response bubble with apply/discard
+  // buttons, handles the POST to /api/variants/apply, and surfaces the
+  // 60s undo countdown on success.
+  function renderPatchPreview(bubble, comment) {
+    var slot = bubble.querySelector('.dlc-patch-slot');
+    if (!slot || !comment.patch) return;
+    var patch = comment.patch;
+
+    // ---- Identity gate: anonymous viewers can read the preview but get a
+    // "sign in to apply" button instead of an enabled apply (which would 401).
+    var identity = (window.doclayerIdentity && window.doclayerIdentity.get && window.doclayerIdentity.get()) || null;
+    var isSignedInToVariant = !!(identity && identity.variantId);
+
+    // ---- Render: macro envelope (if any) + ops diff + effective_ops ----
+    var headerExtras = '';
+    if (patch.macro && typeof patch.macro === 'object') {
+      headerExtras +=
+        '<div class="patch-macro-row">' +
+          '<span class="patch-badge patch-badge-structural">structural change</span>' +
+          '<span class="patch-macro-kind">' + escapeHtml(patch.macro.kind || 'macro') + '</span>' +
+          (patch.macro.params
+            ? '<span class="patch-macro-params">' + escapeHtml(formatValue(patch.macro.params)) + '</span>'
+            : '') +
+        '</div>';
+    }
+
+    var literalOpsHtml = (patch.ops || [])
+      .filter(function (o) { return o.op !== 'test'; })
+      .map(function (o) { return renderOpRow(o, patch.ops || []); })
+      .join('');
+
+    // Macro-only patches have ops=[] (or test-only) and carry the writes in
+    // effective_ops. Always render effective_ops if they exist and differ
+    // from the literal ops — otherwise the viewer accepts blind.
+    var effectiveOps = Array.isArray(patch.effective_ops) ? patch.effective_ops : [];
+    var literalNonTest = (patch.ops || []).filter(function (o) { return o.op !== 'test'; });
+    var effectiveNonTest = effectiveOps.filter(function (o) { return o.op !== 'test'; });
+    // Show effective_ops whenever there's a macro envelope (regardless of
+    // whether expansion count happens to match the literal-op count). The
+    // "Macro expands to:" label disambiguates.
+    var showEffective = effectiveNonTest.length > 0 && !!patch.macro;
+    var effectiveOpsHtml = showEffective
+      ? effectiveNonTest.map(function (o) { return renderOpRow(o, effectiveOps); }).join('')
+      : '';
+
+    var opsBlock = '';
+    if (literalOpsHtml) {
+      opsBlock += '<div class="patch-ops">' + literalOpsHtml + '</div>';
+    }
+    if (effectiveOpsHtml) {
+      opsBlock +=
+        '<div class="patch-ops-effective">' +
+          '<div class="patch-ops-effective-label">macro expands to:</div>' +
+          effectiveOpsHtml +
+        '</div>';
+    }
+    if (!opsBlock) {
+      opsBlock = '<div class="patch-ops"><div class="patch-op-empty">(no diff)</div></div>';
+    }
+
+    var footHtml = isSignedInToVariant
+      ? '<button class="patch-apply-btn" type="button">apply to your variant</button>' +
+        '<button class="patch-discard-link" type="button">discard</button>'
+      : '<button class="patch-apply-btn patch-signin-btn" type="button">sign in to apply</button>' +
+        '<button class="patch-discard-link" type="button">discard</button>';
+
+    slot.innerHTML =
+      '<div class="patch-preview">' +
+        '<div class="patch-preview-head">' +
+          '<span class="patch-intent">' + escapeHtml(patch.intent || 'patch') + '</span>' +
+        '</div>' +
+        headerExtras +
+        opsBlock +
+        '<div class="patch-preview-foot">' + footHtml + '</div>' +
+        '<div class="patch-applying-row" style="display:none">' +
+          '<span class="dlc-pulse"></span>' +
+          '<span class="patch-applying-label">architect applying&hellip;</span>' +
+        '</div>' +
+        '<div class="patch-error" style="display:none"></div>' +
+      '</div>';
+
+    var applyBtn   = slot.querySelector('.patch-apply-btn');
+    var discardBtn = slot.querySelector('.patch-discard-link');
+    var applying   = slot.querySelector('.patch-applying-row');
+    var errEl      = slot.querySelector('.patch-error');
+
+    if (!isSignedInToVariant) {
+      applyBtn.addEventListener('click', function () {
+        if (window.doclayerIdentity && typeof window.doclayerIdentity.openModal === 'function') {
+          window.doclayerIdentity.openModal({});
+        } else if (window.doclayerEnsureIdentity) {
+          window.doclayerEnsureIdentity();
+        }
+        // After sign-in, identity-ready fires and we re-render the preview
+        // so the user can apply without finding the patch card again.
+        // AbortController ensures the listener is torn down if:
+        //  - signin succeeds (re-render fires + abort)
+        //  - user closes the modal without signing in (doclayer:modal-closed)
+        //  - the bubble is removed from the DOM
+        // Otherwise the listener leaks and a future signin re-renders a stale
+        // preview attached to an orphaned bubble.
+        var ac = new AbortController();
+        document.addEventListener('doclayer:identity-ready', function () {
+          try { renderPatchPreview(bubble, comment); } catch (e) { /* swallow */ }
+          ac.abort();
+        }, { signal: ac.signal, once: true });
+        window.addEventListener('doclayer:modal-closed', function () {
+          ac.abort();
+        }, { signal: ac.signal, once: true });
+        // Watch bubble removal via MutationObserver — addEventListener('remove')
+        // is not a standard event, so we observe the parent for childList
+        // mutations and abort when bubble leaves the tree.
+        if (bubble && bubble.parentNode && typeof MutationObserver === 'function') {
+          var mo = new MutationObserver(function () {
+            if (!bubble.isConnected) { ac.abort(); mo.disconnect(); }
+          });
+          try { mo.observe(bubble.parentNode, { childList: true }); } catch (e) { /* swallow */ }
+          ac.signal.addEventListener('abort', function () { mo.disconnect(); });
+        }
+      });
+    } else {
+      applyBtn.addEventListener('click', function () { submitPatch(); });
+    }
+    discardBtn.addEventListener('click', function () {
+      if (slot.parentNode) slot.parentNode.removeChild(slot);
+    });
+
+    function setApplying(on) {
+      applying.style.display = on ? 'flex' : 'none';
+      applyBtn.disabled = on;
+      discardBtn.disabled = on;
+    }
+    function setError(msg, action) {
+      errEl.innerHTML = '<span class="patch-error-msg">' + escapeHtml(msg) + '</span>'
+        + (action ? ' <button class="patch-error-action" type="button">' + escapeHtml(action.label) + '</button>' : '');
+      errEl.style.display = 'block';
+      if (action) {
+        errEl.querySelector('.patch-error-action').addEventListener('click', action.fn);
+      }
+    }
+
+    function submitPatch() {
+      errEl.style.display = 'none';
+      setApplying(true);
+      doApply(patch).then(function (out) {
+        setApplying(false);
+        if (out.status >= 200 && out.status < 300) {
+          // Live-apply DOM and start the undo countdown.
+          if (window.doclayerPatchRenderer) {
+            window.doclayerPatchRenderer.applyPatchLive(patch, out.body.patch_id);
+          }
+          comment.appliedPatchId = out.body.patch_id;
+          renderAppliedCountdown(slot, out.body.patch_id);
+          return;
+        }
+        handleApplyError(out);
+      }).catch(function (e) {
+        setApplying(false);
+        setError("couldn't reach server — retry", { label: 'retry', fn: submitPatch });
+      });
+    }
+
+    function handleApplyError(out) {
+      var body = out.body || {};
+      var code = body.error || ('http ' + out.status);
+      if (out.status === 409 && body.error === 'SCHEMA_STALE') {
+        setError('this patch references an old schema', { label: 'regenerate', fn: function () {
+          errEl.style.display = 'none';
+          setApplying(true);
+          regenerate(patch).then(function (fresh) {
+            setApplying(false);
+            if (fresh && fresh.patch) {
+              comment.patch = fresh.patch;
+              renderPatchPreview(bubble, comment);
+            } else {
+              setError("couldn't regenerate — try again", { label: 'retry', fn: submitPatch });
+            }
+          }).catch(function () {
+            setApplying(false);
+            setError("couldn't regenerate", { label: 'retry', fn: submitPatch });
+          });
+        }});
+        return;
+      }
+      if (out.status === 412 || (out.status === 409 && body.error === 'VERSION_FORK_DETECTED')) {
+        setError('your variant has changed · another patch landed first', { label: 'refresh + retry', fn: function () {
+          // Surgical re-sync: re-fetch and replay applied patches against
+          // :root, then re-render this preview against the fresh doc state.
+          // Avoids location.reload() — preserves pause state, scroll position,
+          // and any in-flight comments the viewer hasn't sent yet.
+          errEl.style.display = 'none';
+          setApplying(true);
+          var doFetch = (window.doclayerPatchRenderer && typeof window.doclayerPatchRenderer.fetchAndReplay === 'function')
+            ? window.doclayerPatchRenderer.fetchAndReplay()
+            : Promise.resolve();
+          doFetch.then(function () {
+            setApplying(false);
+            renderPatchPreview(bubble, comment);
+          }).catch(function () {
+            setApplying(false);
+            setError("couldn't refresh — try again", { label: 'retry', fn: submitPatch });
+          });
+        }});
+        return;
+      }
+      if (out.status === 422) {
+        // SMOKE_FAILED carries {scenario, assertion} — show both so the viewer
+        // can see WHICH scenario's smoke check broke, not just the failed bit.
+        if (body.error === 'SMOKE_FAILED') {
+          var scenarioStr = body.scenario ? String(body.scenario) : 'scenario';
+          var assertionStr = body.assertion ? String(body.assertion) : 'unknown';
+          setError("couldn't apply: smoke check on " + scenarioStr + ' failed (' + assertionStr + ')',
+            { label: 'retry', fn: submitPatch });
+          return;
+        }
+        var reason = body.reason || body.assertion || body.guard || code;
+        setError("couldn't apply: " + reason, { label: 'retry', fn: submitPatch });
+        return;
+      }
+      if (out.status === 401 || out.status === 403) {
+        setError("you're not signed in for this variant", null);
+        return;
+      }
+      setError("couldn't apply (" + code + ")", { label: 'retry', fn: submitPatch });
+    }
+  }
+
+  function renderAppliedCountdown(slot, patchId) {
+    var duration = 60000;
+    var started = Date.now();
+    slot.querySelector('.patch-preview').classList.add('patch-applied');
+    slot.querySelector('.patch-preview-foot').style.display = 'none';
+    var bar = document.createElement('div');
+    bar.className = 'patch-applied-countdown';
+    bar.innerHTML =
+      '<span class="pac-label">applied · undo within <span class="pac-secs">60</span>s</span>' +
+      '<button class="patch-undo-btn" type="button">undo</button>' +
+      '<div class="pac-bar"><div class="pac-fill"></div></div>';
+    slot.appendChild(bar);
+    var fill = bar.querySelector('.pac-fill');
+    var secs = bar.querySelector('.pac-secs');
+    var undoBtn = bar.querySelector('.patch-undo-btn');
+
+    var rafId = null;
+    function tick() {
+      var elapsed = Date.now() - started;
+      var pct = Math.max(0, 1 - elapsed / duration);
+      fill.style.width = (pct * 100).toFixed(1) + '%';
+      secs.textContent = Math.max(0, Math.ceil((duration - elapsed) / 1000));
+      if (elapsed < duration) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        bar.classList.add('expired');
+        undoBtn.disabled = true;
+        undoBtn.textContent = 'undo window closed';
+      }
+    }
+    rafId = requestAnimationFrame(tick);
+
+    undoBtn.addEventListener('click', function () {
+      if (Date.now() - started > duration) return;
+      undoBtn.disabled = true;
+      undoBtn.textContent = 'undoing…';
+      if (!window.doclayerPatchRenderer) {
+        undoBtn.textContent = 'undo unavailable';
+        return;
+      }
+      window.doclayerPatchRenderer.undoPatch(patchId).then(function () {
+        if (rafId) cancelAnimationFrame(rafId);
+        bar.innerHTML = '<span class="pac-undone">reverted</span>';
+      }).catch(function (e) {
+        var code = (e && e.code) || '';
+        var msg = (e && e.message) || 'undo failed';
+        if (code === 'UNDO_WINDOW_EXPIRED') {
+          // Force the visual expired state: stop the countdown, gray out the
+          // bar, disable the undo button. Matches what tick() does at t=60s.
+          if (rafId) cancelAnimationFrame(rafId);
+          bar.classList.add('expired');
+          fill.style.width = '0%';
+          secs.textContent = '0';
+          undoBtn.disabled = true;
+          undoBtn.textContent = 'undo window closed';
+        } else {
+          undoBtn.disabled = false;
+          undoBtn.textContent = 'undo';
+        }
+        var p = document.createElement('div');
+        p.className = 'patch-error';
+        p.style.display = 'block';
+        p.textContent = msg;
+        bar.appendChild(p);
+      });
+    });
+  }
+
+  function doApply(patch) {
+    var supa = (window.doclayerIdentity && window.doclayerIdentity.getSupabase) ? window.doclayerIdentity.getSupabase() : null;
+    var variantId = (window.doclayerIdentity && window.doclayerIdentity.getVariantId) ? window.doclayerIdentity.getVariantId() : null;
+    var bodyObj = {
+      patch: patch,
+      variant_id: variantId,
+      scenario_id: SCENARIO,
+    };
+    var tokenP = supa ? supa.auth.getSession().then(function (r) {
+      return r && r.data && r.data.session && r.data.session.access_token;
+    }) : Promise.resolve(null);
+    return tokenP.then(function (token) {
+      return fetch('/api/variants/apply', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? ('Bearer ' + token) : '',
+        },
+        body: JSON.stringify(bodyObj),
+      }).then(function (res) {
+        return res.json().then(function (j) { return { status: res.status, body: j }; },
+                              function () { return { status: res.status, body: {} }; });
+      });
+    });
+  }
+
+  function regenerate(patch) {
+    var supa = (window.doclayerIdentity && window.doclayerIdentity.getSupabase) ? window.doclayerIdentity.getSupabase() : null;
+    var variantId = (window.doclayerIdentity && window.doclayerIdentity.getVariantId) ? window.doclayerIdentity.getVariantId() : null;
+    var tokenP = supa ? supa.auth.getSession().then(function (r) {
+      return r && r.data && r.data.session && r.data.session.access_token;
+    }) : Promise.resolve(null);
+    return tokenP.then(function (token) {
+      return fetch('/api/variants/regenerate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? ('Bearer ' + token) : '',
+        },
+        body: JSON.stringify({
+          prior_patch: patch,
+          variant_id: variantId,
+          scenario_id: SCENARIO,
+        }),
+      }).then(function (r) { return r.json().catch(function () { return {}; }); });
+    });
+  }
+
+  function renderOpRow(o, ops) {
+    // Block ops get special structured formatting — humans can't read raw
+    // /variant/content/blocks/items/<id> add/remove ops, but they CAN read
+    // "insert block <id> (paragraph) at position 3".
+    var blockMatch = (o.path || '').match(/^\/variant\/content\/blocks\/items\/([a-z0-9-]+)(?:\/(.+))?$/i);
+    if (blockMatch) {
+      var blockId = blockMatch[1];
+      var sub = blockMatch[2] || '';
+      var kind = '';
+      var label = '';
+      if (!sub && o.op === 'add' && o.value && typeof o.value === 'object') {
+        kind = o.value.kind || o.value.type || 'block';
+        label = 'insert ' + kind + ' block ' + blockId.slice(0, 8);
+      } else if (!sub && o.op === 'remove') {
+        label = 'remove block ' + blockId.slice(0, 8);
+      } else {
+        label = (o.op || 'op') + ' ' + (sub ? (sub + ' of ') : '') + 'block ' + blockId.slice(0, 8);
+      }
+      return '<div class="patch-op patch-op-block">' +
+        '<span class="patch-badge patch-badge-block">block</span>' +
+        '<span class="ptv-key">' + escapeHtml(label) + '</span>' +
+      '</div>';
+    }
+
+    var prior = findPriorTestValue(ops, o);
+    var label2 = humanizePath(o.path || '');
+    var fromTo = (o.op === 'remove')
+      ? '<span class="ptv-from">' + escapeHtml(formatValue(prior)) + '</span> <span class="ptv-arr">→ removed</span>'
+      : '<span class="ptv-from">' + escapeHtml(formatValue(prior)) + '</span> <span class="ptv-arr">→</span> <span class="ptv-to">' + escapeHtml(formatValue(o.value)) + '</span>';
+    return '<div class="patch-op">'
+      + '<span class="ptv-key">' + escapeHtml(label2) + '</span>'
+      + fromTo
+      + '</div>';
+  }
+
+  function findPriorTestValue(ops, mutOp) {
+    var idx = ops.indexOf(mutOp);
+    if (idx <= 0) return undefined;
+    var prior = ops[idx - 1];
+    if (prior && prior.op === 'test' && prior.path === mutOp.path) return prior.value;
+    return undefined;
+  }
+  function humanizePath(p) {
+    return (p || '').replace(/^\/variant\//, '').replace(/\//g, ' · ');
+  }
+  function formatValue(v) {
+    if (v === undefined) return '∅';
+    if (v === null) return 'null';
+    if (typeof v === 'string') {
+      return v.length > 60 ? '"' + v.slice(0, 57) + '…"' : '"' + v + '"';
+    }
+    if (typeof v === 'object') {
+      try { var s = JSON.stringify(v); return s.length > 60 ? s.slice(0, 57) + '…' : s; }
+      catch (e) { return '[object]'; }
+    }
+    return String(v);
   }
 
   function wireThread(bubble, comment) {

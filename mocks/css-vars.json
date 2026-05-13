@@ -1,0 +1,31 @@
+{
+  "_comment": "Client mirror of lib/css-vars.ts cssVarRegistry. Keep in sync MANUALLY when adding/removing CSS vars. Validators are not serialized (server-only). Tested by lib/css-vars.test.ts which loads this file and diffs name/schemaPath/default against the TS registry.",
+  "_source": "lib/css-vars.ts",
+  "entries": [
+    { "name": "--bg",            "schemaPath": "/variant/tokens/color/bg",            "default": "#0a0a0b" },
+    { "name": "--panel",         "schemaPath": "/variant/tokens/color/panel",         "default": "#131316" },
+    { "name": "--panel-2",       "schemaPath": "/variant/tokens/color/panel-2",       "default": "#1a1a1f" },
+    { "name": "--border",        "schemaPath": "/variant/tokens/color/border",        "default": "#26262c" },
+    { "name": "--border-soft",   "schemaPath": "/variant/tokens/color/border-soft",   "default": "#1f1f25" },
+    { "name": "--text",          "schemaPath": "/variant/tokens/color/text",          "default": "#ebebef" },
+    { "name": "--text-2",        "schemaPath": "/variant/tokens/color/text-2",        "default": "#b0b0b8" },
+    { "name": "--text-muted",    "schemaPath": "/variant/tokens/color/text-muted",    "default": "#6a6a74" },
+    { "name": "--accent",        "schemaPath": "/variant/tokens/color/accent",        "default": "#95e35d" },
+    { "name": "--accent-soft",   "schemaPath": "/variant/tokens/color/accent-soft",   "default": "#95e35d22" },
+    { "name": "--accent-2",      "schemaPath": "/variant/tokens/color/accent-2",      "default": "#7a9a6e" },
+    { "name": "--vishal",        "schemaPath": "/variant/tokens/color/vishal",        "default": "#6ba0ff" },
+    { "name": "--akhil",         "schemaPath": "/variant/tokens/color/akhil",         "default": "#ff8aa8" },
+    { "name": "--warn",          "schemaPath": "/variant/tokens/color/warn",          "default": "#ffb86b" },
+    { "name": "--third",         "schemaPath": "/variant/tokens/color/third",         "default": "#b58acc" },
+    { "name": "--code",          "schemaPath": "/variant/tokens/typography/code/family",  "default": "'IBM Plex Mono', monospace" },
+    { "name": "--sans",          "schemaPath": "/variant/tokens/typography/sans/family",  "default": "'Inter', sans-serif" },
+    { "name": "--serif",         "schemaPath": "/variant/tokens/typography/serif/family", "default": "'Iowan Old Style', serif" },
+    { "name": "--r",             "schemaPath": "/variant/tokens/spacing/radius",      "default": "8px" },
+    { "name": "--r-lg",          "schemaPath": "/variant/tokens/spacing/radius-lg",   "default": "14px" },
+    { "name": "--row-topbar",    "schemaPath": "/variant/tokens/spacing/row-topbar",  "default": "44px" },
+    { "name": "--row-harness",   "schemaPath": "/variant/tokens/spacing/row-harness", "default": "27px" },
+    { "name": "--row-status",    "schemaPath": "/variant/tokens/spacing/row-status",  "default": "28px" },
+    { "name": "--typing-speed-ms", "schemaPath": "/variant/styles/cssVars/typing-speed-ms",      "default": 60 },
+    { "name": "--anim-scale",      "schemaPath": "/variant/styles/animation/global/duration",   "default": 1.0 }
+  ]
+}
