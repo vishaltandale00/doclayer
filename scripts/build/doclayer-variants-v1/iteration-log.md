@@ -49,3 +49,17 @@ Adversarial scored **9.28/10 — PASS**. Phase 1 complete. Score arc: 7.56 → 8
 **Phase 1 ships.** Migration apply still requires `! supabase login && supabase link --project-ref ritjqumjhbkujnvyfkwi && supabase db push` — surfaced to user. Phase 2 (manifest schema + fingerprint) can proceed without migration applied; it's lib code.
 
 **Next iteration**: Phase 2 dispatch — JSON schema, fingerprint canonicalization (JCS), allowlist enumeration, CSS-var registry.
+
+## Iteration 6 — 2026-05-12T23:01Z
+
+**Phase 2** (Manifest + schema fingerprint). Single-pass: build + review.
+
+Build agent shipped: canonical JSON Schema at `lib/variant-schema.json` (125 unique leaves: 21 cssVars/tokens/spacing/typography + 1 anim scale + 34 visibility + 61 microcopy + 5 block atoms + 1 block order); JCS-compliant fingerprint canonicalization at `lib/schema-fp.ts` (~230 LOC) with $ref inlining + cycle sentinel + UTF-16 code-unit key sort + annotation-strip; schema-driven allowlist enumeration at `lib/allowlist.ts`; CSS-var registry at `lib/css-vars.ts` (25 entries). 30/30 tests passing in `lib/__tests__/`.
+
+**v1 schema fingerprint: `170cf77f16aa`** — locked. Every patch from now on carries this; mismatches trigger 409 SCHEMA_STALE.
+
+Adversarial scored **9.22/10 — PASS**. Canonicalization audited: $refs inlined, cycles → sentinel + REF_LIMIT, external refs throw, UTF-16 sort verified (NOT default Array.sort), correct annotation strip-list, shortest-round-trip number serialization, JCS-compliant string escaping. 5 low-severity non-blocking nits (rgb channel bounds, allowlist memoization, additional `additionalProperties:false` test, large-float guard, css-var scenarios drift check).
+
+Reconciled audit's 127 → schema's 125: `--typing-speed-ms` and `--anim-scale` were double-counted in the Phase 0 audit (appearing in both "CSS variables" and "Animation scales" tables). Schema places each at one canonical path.
+
+**Next iteration**: Phase 3 (apply / undo / regenerate endpoints) — server-side patch pipeline. Will need migration applied to test end-to-end.

@@ -2,49 +2,43 @@
   "schema_version": 1,
   "build_id": "doclayer-variants-v1",
   "started_at": "2026-05-12T22:00:00Z",
-  "iteration": 5,
+  "iteration": 6,
   "iteration_cap": 20,
   "stop_reason": null,
+  "schema_fingerprint_v1": "170cf77f16aa",
   "phases": [
     {
       "id": 0,
       "name": "Patchable surface audit",
       "status": "complete",
-      "build_agent_ran": true,
       "adversarial_score": 9.17,
       "review_attempts": 2,
-      "last_findings": null,
       "completed_at": "2026-05-12T22:25:00Z"
     },
     {
       "id": 1,
       "name": "Supabase foundation",
       "status": "complete",
-      "build_agent_ran": true,
       "adversarial_score": 9.28,
       "review_attempts": 3,
-      "last_findings": {
-        "verdict": "PASS",
-        "score": 9.28,
-        "optional_nits": [
-          {"id": "n1", "issue": "Add `if not exists` to table creates for replay-safety in disaster recovery."},
-          {"id": "n2", "issue": "Consider patches_audit_after_delete trigger so owner deletes leave audit row."},
-          {"id": "n3", "issue": "After signOut() in auth mode, fall through to getStoredLocal() instead of empty state."}
-        ],
-        "user_action_blocker": "supabase_login_required — migration applies after: ! supabase login && cd /Users/vishaltandale/ProjectsDev/doclayer && supabase link --project-ref ritjqumjhbkujnvyfkwi && supabase db push"
-      },
       "completed_at": "2026-05-12T22:54:00Z",
-      "depends_on": [0]
+      "depends_on": [0],
+      "user_action_blocker": "supabase login + supabase db push required for deploy testing — code is complete"
     },
     {
       "id": 2,
       "name": "Manifest + schema fingerprint",
-      "status": "pending",
-      "build_agent_ran": false,
-      "adversarial_score": null,
-      "last_findings": null,
-      "completed_at": null,
-      "depends_on": [0, 1]
+      "status": "complete",
+      "build_agent_ran": true,
+      "adversarial_score": 9.22,
+      "review_attempts": 1,
+      "completed_at": "2026-05-12T23:01:00Z",
+      "depends_on": [0, 1],
+      "deliverables": {
+        "schema_fp": "170cf77f16aa",
+        "allowlist_count": 125,
+        "tests_passing": "30/30"
+      }
     },
     {
       "id": 3,

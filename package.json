@@ -4,7 +4,8 @@
   "private": true,
   "description": "doclayer mocks + feedback drafting serverless function",
   "scripts": {
-    "build": "node scripts/build-inject-env.js"
+    "build": "node scripts/build-inject-env.js",
+    "test:lib": "node --experimental-strip-types --test lib/__tests__/schema-fp.test.ts lib/__tests__/allowlist.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.1"
