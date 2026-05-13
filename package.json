@@ -13,7 +13,9 @@
     "@anthropic-ai/sdk": "^0.40.1",
     "@supabase/supabase-js": "^2.105.4",
     "@types/jsdom": "^28.0.3",
-    "jsdom": "^29.1.1"
+    "@types/pg": "^8.20.0",
+    "jsdom": "^29.1.1",
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "@vercel/node": "^3.2.0",
