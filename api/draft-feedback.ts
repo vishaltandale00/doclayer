@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Anthropic from "@anthropic-ai/sdk";
 import variantSchema from "../lib/variant-schema.json" with { type: "json" };
 import { schemaFingerprint } from "../lib/schema-fp.ts";
-import { enumerateAllowlist } from "../lib/allowlist.ts";
+import { enumerateAllowlist, isPathAllowed } from "../lib/allowlist.ts";
 
 // ---- Types (inlined; no shared types yet) ----
 
@@ -31,6 +31,21 @@ interface PatchEnvelope {
   macro?: unknown;
 }
 
+/**
+ * Revision-variant proposal (DSL spec section g): the prose escape hatch.
+ * Architect emits this when the viewer's comment is asking to rewrite prose
+ * CONTENT (words, sentences, paragraph meaning) rather than the harness's
+ * UI / style / microcopy / behavior. It targets a `data-prose` block by id.
+ */
+interface RevisionVariantProposal {
+  schema_fp: string;
+  viewer_comment_id?: string;
+  intent: string;
+  target_block_id: string;
+  suggested_text: string;
+  rationale?: string;
+}
+
 interface DraftResponseBody {
   response: string;
   routedTo?: RoutedTo;
@@ -41,9 +56,10 @@ interface DraftResponseBody {
   /**
    * Prose escape hatch (DSL spec section g): when the architect classifies the
    * comment as a prose-rewrite request, it emits a revision-variant proposal
-   * targeting a Yjs sub-doc instead of patching the manifest.
+   * targeting a Yjs sub-doc (mocks: a data-prose element) instead of patching
+   * the manifest.
    */
-  revision_variant?: { blockId?: string; suggestedText: string } | null;
+  revision_variant?: RevisionVariantProposal | null;
 }
 
 interface ErrorBody {
@@ -198,7 +214,7 @@ Macros: insert_block, delete_block
 
 Ops you may NOT emit: move, copy, any op targeting /yjsSubdoc, /scripts, /handlers, /events, /id, /schemaVersion, /owner, /permissions, any path containing __proto__, constructor, or prototype
 
-Output format for the structured payload (strict JSON, no commentary):
+Output format for the PATCH structured payload (strict JSON, no commentary):
 {
   "schema_fp": "${CURRENT_SCHEMA_FP}",
   "scenario_id": "<one of: 00-flow, 01-bootstrap, 02-planning, 03-drafting, 04-review, 05-publish, 06-reader-harness, 07-multiplayer, 08-workstream, 09-review-loop, index — MUST match the Current scenario above>",
@@ -216,28 +232,57 @@ Constraints:
 - Max 20 ops per patch
 - If no allowlist path fits the viewer's request, emit a revision-variant proposal instead
 
-Prose escape hatch: if the viewer's comment is clearly asking to rewrite
-prose (contains words like "rewrite", "rephrase", "make this paragraph",
-"the prose here"), DO NOT emit a patch. Emit a revision-variant proposal
-instead with the suggested rewrite text.
+Classification — PATCH vs. REVISION_VARIANT (this is the most important decision):
+
+Emit a <<PATCH>> when the viewer's comment is about HOW THE HARNESS BEHAVES —
+UI, style, microcopy labels, visibility, timing, animation, color, layout.
+The change lives in the variant manifest (CSS vars, microcopy strings,
+visibility booleans, animation-scale).
+
+Emit a <<REVISION_VARIANT>> when the viewer's comment is about REWRITING
+PROSE CONTENT — the actual words, sentences, or paragraph meaning of a
+content block. Prose lives in Yjs sub-docs which the DSL cannot mutate.
+The target block is one of the elements marked data-prose="<id>" in the
+scenario. Pick the data-prose id that best matches what the viewer is
+talking about; if you don't know, leave target_block_id as the empty string.
+
+target_block_id MUST refer to a LEAF prose element. Do not propose rewriting a container element that contains nested data-prose or data-patchable descendants — those are structured blocks, not prose. If you can only identify a container, leave target_block_id as the empty string rather than risk a destructive swap.
+
+Worked examples:
+- "make typing slower"                  → <<PATCH>>  (animation-scale CSS var)
+- "this label is wrong"                 → <<PATCH>>  (microcopy replace)
+- "change the headline color to red"    → <<PATCH>>  (CSS var)
+- "hide the brainstorm pad"             → <<PATCH>>  (visibility toggle)
+- "make this denser"                    → <<REVISION_VARIANT>>  (prose rewrite)
+- "rewrite this paragraph"              → <<REVISION_VARIANT>>
+- "this sentence is wordy"              → <<REVISION_VARIANT>>
+- "the headline copy is unclear"        → <<REVISION_VARIANT>>
+- "the prose here reads marketing-y"    → <<REVISION_VARIANT>>
+
+Output format for the REVISION_VARIANT structured payload (strict JSON):
+{
+  "schema_fp": "${CURRENT_SCHEMA_FP}",
+  "viewer_comment_id": "<id>",
+  "intent": "<one sentence: what's wrong and what your rewrite changes>",
+  "target_block_id": "<data-prose id from the scenario, or '' if unknown>",
+  "suggested_text": "<≤500 chars — the actual rewritten prose>",
+  "rationale": "<one short sentence on why this rewrite is better>"
+}
 
 Output protocol for the structured payload — REQUIRED. After the prose
 response (and after the <<KIND:...>> line and a blank line, prose, then a
-blank line), append one of:
+blank line), append exactly ONE of:
 
   <<PATCH>>
   {valid JSON patch envelope as described above}
   <<END>>
 
-OR
-
   <<REVISION_VARIANT>>
-  {"blockId":"<blockId or empty>","suggestedText":"<≤500 chars suggested rewrite>"}
+  {valid JSON revision-variant envelope as described above}
   <<END>>
 
-OR (when neither applies, e.g. pure meta feedback):
-
-  <<PATCH:NONE>>
+  <<PATCH:NONE>>     (use this when neither applies — e.g. pure meta
+                      feedback about pacing or framing with nothing to mutate)
 
 The structured payload is consumed by the harness apply flow and is stripped
 from display.`;
@@ -255,11 +300,11 @@ Scenario context: ${ctx}${PATCH_DSL_PROMPT}`;
 function parseStructuredPayload(raw: string): {
   prose: string;
   patch: PatchEnvelope | null;
-  revision_variant: { blockId?: string; suggestedText: string } | null;
+  revision_variant: RevisionVariantProposal | null;
 } {
   let prose = raw;
   let patch: PatchEnvelope | null = null;
-  let revision_variant: { blockId?: string; suggestedText: string } | null = null;
+  let revision_variant: RevisionVariantProposal | null = null;
 
   const patchMatch = raw.match(/<<PATCH>>\s*([\s\S]*?)\s*<<END>>/);
   if (patchMatch) {
@@ -276,9 +321,27 @@ function parseStructuredPayload(raw: string): {
   const rvMatch = raw.match(/<<REVISION_VARIANT>>\s*([\s\S]*?)\s*<<END>>/);
   if (rvMatch) {
     try {
-      const parsed = JSON.parse(rvMatch[1]) as { blockId?: string; suggestedText: string };
-      if (parsed && typeof parsed.suggestedText === "string") {
-        revision_variant = parsed;
+      // Accept both the v6 shape ({schema_fp, viewer_comment_id, intent,
+      // target_block_id, suggested_text, rationale}) and the older
+      // {blockId, suggestedText} shape for backward compat — normalize to v6.
+      const parsedAny = JSON.parse(rvMatch[1]) as Record<string, unknown>;
+      const suggested =
+        typeof parsedAny.suggested_text === "string" ? (parsedAny.suggested_text as string) :
+        typeof parsedAny.suggestedText === "string" ? (parsedAny.suggestedText as string) :
+        null;
+      const target =
+        typeof parsedAny.target_block_id === "string" ? (parsedAny.target_block_id as string) :
+        typeof parsedAny.blockId === "string" ? (parsedAny.blockId as string) :
+        "";
+      if (suggested !== null && suggested.length <= 500) {
+        revision_variant = {
+          schema_fp: typeof parsedAny.schema_fp === "string" ? (parsedAny.schema_fp as string) : CURRENT_SCHEMA_FP,
+          viewer_comment_id: typeof parsedAny.viewer_comment_id === "string" ? (parsedAny.viewer_comment_id as string) : undefined,
+          intent: typeof parsedAny.intent === "string" ? (parsedAny.intent as string) : "rewrite proposed",
+          target_block_id: target,
+          suggested_text: suggested,
+          rationale: typeof parsedAny.rationale === "string" ? (parsedAny.rationale as string) : undefined,
+        };
       }
     } catch {
       // ignore
@@ -475,6 +538,44 @@ export default async function handler(
     }
     if (patch) {
       (patch as { scenario_id?: string }).scenario_id = scenario;
+    }
+    // Same defense-in-depth for revision-variant proposals: pin schema_fp to
+    // the canonical value. A hostile architect can't smuggle a mismatched fp.
+    if (revision_variant && revision_variant.schema_fp !== CURRENT_SCHEMA_FP) {
+      revision_variant.schema_fp = CURRENT_SCHEMA_FP;
+    }
+
+    // P1-3: validate every op path against the allowlist BEFORE returning to
+    // the client. The apply endpoint enforces this server-side too, but
+    // catching out-of-allowlist paths here means the bubble never offers an
+    // un-appliable patch, and we return a clear error instead of a confusing
+    // 422 from /apply later. Macro-paired ops typically don't appear in
+    // patch.ops (they live in effective_ops after expansion); we validate
+    // only the literal ops emitted by the architect.
+    if (patch && Array.isArray(patch.ops)) {
+      const offenders: string[] = [];
+      for (const op of patch.ops) {
+        if (!op || typeof op.path !== 'string') continue;
+        // Strip the /variant prefix so isPathAllowed receives the same shape
+        // the allowlist enumerates.
+        const variantPath = op.path;
+        if (!isPathAllowed(variantPath)) {
+          offenders.push(variantPath);
+        }
+      }
+      if (offenders.length > 0) {
+        // Treat the architect output as malformed. Log loudly, surface a
+        // structured client error + a graceful fallback message so the bubble
+        // can render something instead of crashing the conversation.
+        // eslint-disable-next-line no-console
+        console.warn('[draft-feedback] architect emitted out-of-allowlist patch paths', { offenders, intent: patch.intent });
+        res.status(422).json({
+          error: 'architect_out_of_allowlist',
+          details: offenders,
+          fallback_response: "we couldn't generate a valid patch for that comment — try rephrasing",
+        });
+        return;
+      }
     }
 
     const result: DraftResponseBody = {

@@ -737,30 +737,30 @@
         <div class="byline" data-patchable="publish-byline">Akhil R &amp; Vishal Tandale · 2026 · part 1 of 4</div>
 
         <div class="preview-content">
-          <div class="preview-variant" id="v-eng" data-prose="publish-variant-engineer">
-            <h2>The runtime around the model</h2>
-            <p>A harness is the controller that wraps the transformer at inference time: the loop that decides which tokens to feed in, which tools to call, what to remember, and how to respond to outputs.</p>
+          <div class="preview-variant" id="v-eng">
+            <h2 data-prose="publish-variant-engineer-h2">The runtime around the model</h2>
+            <p data-prose="publish-variant-engineer-p1">A harness is the controller that wraps the transformer at inference time: the loop that decides which tokens to feed in, which tools to call, what to remember, and how to respond to outputs.</p>
             <div class="code-snip">while (!done) {
   ctx = memory.recall(state)
   out = model.generate(ctx)
   state = harness.step(out)
 }</div>
-            <p>The transformer is policy. The harness is everything else. Scaling the policy doesn't fix harness shape — that's a different optimization problem entirely.</p>
+            <p data-prose="publish-variant-engineer-p2">The transformer is policy. The harness is everything else. Scaling the policy doesn't fix harness shape — that's a different optimization problem entirely.</p>
           </div>
 
-          <div class="preview-variant" id="v-pm" data-prose="publish-variant-pm">
-            <h2>The shape of the AI product, not the model</h2>
-            <p>If the model is the engine, the harness is the chassis. Two startups can use the same engine and ship completely different products — the chassis is what the user feels.</p>
-            <div class="analogy">
+          <div class="preview-variant" id="v-pm">
+            <h2 data-prose="publish-variant-pm-h2">The shape of the AI product, not the model</h2>
+            <p data-prose="publish-variant-pm-p1">If the model is the engine, the harness is the chassis. Two startups can use the same engine and ship completely different products — the chassis is what the user feels.</p>
+            <div class="analogy" data-prose="publish-variant-pm-analogy">
               Think of harnesses like the difference between a sedan, a truck, and a sports car all running the same V8. The engine matters less than the form factor for what a customer is buying.
             </div>
-            <p>This is why scaling models doesn't dissolve startups. The harness — the product surface, the memory, the way the agent loops — is where the moat lives.</p>
+            <p data-prose="publish-variant-pm-p2">This is why scaling models doesn't dissolve startups. The harness — the product surface, the memory, the way the agent loops — is where the moat lives.</p>
           </div>
 
-          <div class="preview-variant" id="v-res" data-prose="publish-variant-researcher">
-            <h2>The decision process external to the policy</h2>
-            <p>Define the harness <em>H</em> as the controller wrapping a parameterized policy <em>π<sub>θ</sub></em>. <em>H</em> selects context, performs intermediate computation, and routes the policy's emissions back into state. The harness is, formally, an MDP whose action space includes invocations of <em>π<sub>θ</sub></em>.</p>
-            <p>Scaling <em>θ</em> improves the policy's per-step behavior but does not constrain <em>H</em>'s decision process — they are orthogonal optimization targets, and recent results (RLM hill-climbing) suggest the harness layer admits its own training signal.</p>
+          <div class="preview-variant" id="v-res">
+            <h2 data-prose="publish-variant-researcher-h2">The decision process external to the policy</h2>
+            <p data-prose="publish-variant-researcher-p1">Define the harness <em>H</em> as the controller wrapping a parameterized policy <em>π<sub>θ</sub></em>. <em>H</em> selects context, performs intermediate computation, and routes the policy's emissions back into state. The harness is, formally, an MDP whose action space includes invocations of <em>π<sub>θ</sub></em>.</p>
+            <p data-prose="publish-variant-researcher-p2">Scaling <em>θ</em> improves the policy's per-step behavior but does not constrain <em>H</em>'s decision process — they are orthogonal optimization targets, and recent results (RLM hill-climbing) suggest the harness layer admits its own training signal.</p>
           </div>
         </div>
       </div>

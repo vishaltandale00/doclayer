@@ -798,38 +798,103 @@
     }
 
     // State: accumulated rows by id (so we can resolve superseded_by → row);
-    // cursor is the oldest applied_at we've seen; firstPage flag drives the
-    // empty-state vs append behavior.
+    // patchCursor / revCursor advance independently so pagination works
+    // across both axes (P1-2 fix). Each is the oldest timestamp we've seen
+    // in its stream. exhausted flips only when BOTH streams report drained.
     var allRows = [];
     var rowById = {};
-    var cursor = null; // applied_at string; null = no cursor (fetch newest)
+    var patchCursor = null;     // applied_at string; null = no cursor (fetch newest)
+    var revCursor = null;       // created_at string; null = no cursor
+    var patchesExhausted = false;
+    var revisionsExhausted = false;
     var loading = false;
-    var exhausted = false;
 
     function fetchPage() {
-      if (loading || exhausted) return Promise.resolve();
+      if (loading || (patchesExhausted && revisionsExhausted)) return Promise.resolve();
       loading = true;
-      var q = supa.from('patches')
-        .select('id, scenario_id, spec, status, applied_at, superseded_by_id')
-        .eq('variant_id', currentIdentity.variantId)
-        .order('applied_at', { ascending: false })
-        .limit(PATCHES_PAGE_SIZE);
-      if (cursor) q = q.lt('applied_at', cursor);
-      return q.then(function (res) {
+
+      // Patches: applied-only, paginated by applied_at.
+      var qPatches = patchesExhausted
+        ? Promise.resolve({ data: [], error: null })
+        : (function () {
+            var q = supa.from('patches')
+              .select('id, scenario_id, spec, status, applied_at, superseded_by_id')
+              .eq('variant_id', currentIdentity.variantId)
+              .order('applied_at', { ascending: false })
+              .limit(PATCHES_PAGE_SIZE);
+            if (patchCursor) q = q.lt('applied_at', patchCursor);
+            return q;
+          })();
+
+      // Revision-variants: ACCEPTED only (P0-3 fix #2 / P1-1). Owner timeline
+      // shows owner-actioned events; pending proposals from third parties
+      // belong in an inbox view, not "your patches". Paginated by created_at.
+      var qRev = revisionsExhausted
+        ? Promise.resolve({ data: [], error: null })
+        : (function () {
+            var q = supa.from('comments')
+              .select('id, scenario_id, text, target_block_id, proposed_text, revision_status, created_at')
+              .eq('variant_id', currentIdentity.variantId)
+              .eq('kind', 'revision_variant')
+              .eq('revision_status', 'accepted')
+              .order('created_at', { ascending: false })
+              .limit(PATCHES_PAGE_SIZE);
+            if (revCursor) q = q.lt('created_at', revCursor);
+            return q;
+          })();
+
+      return Promise.all([qPatches, qRev]).then(function (results) {
+        var res = results[0];
+        var revRes = results[1];
         loading = false;
-        if (res.error) {
+        if (res.error && revRes.error) {
           wrap.querySelector('.id-patches-body').innerHTML =
             '<div class="id-patches-empty">couldn\'t load.</div>';
           return;
         }
-        var rows = res.data || [];
-        if (rows.length < PATCHES_PAGE_SIZE) exhausted = true;
-        if (rows.length) {
-          rows.forEach(function (r) {
-            if (!rowById[r.id]) { rowById[r.id] = r; allRows.push(r); }
-          });
-          cursor = rows[rows.length - 1].applied_at;
+        var rows = (res && !res.error && Array.isArray(res.data)) ? res.data : [];
+        if (!patchesExhausted) {
+          if (rows.length < PATCHES_PAGE_SIZE) patchesExhausted = true;
+          if (rows.length) {
+            rows.forEach(function (r) {
+              if (!rowById[r.id]) { rowById[r.id] = r; allRows.push(r); }
+            });
+            patchCursor = rows[rows.length - 1].applied_at;
+          }
         }
+        // Fold revision-variants into the same allRows array using a
+        // discriminator so renderList can pick the right icon/label.
+        var revRows = (revRes && !revRes.error && Array.isArray(revRes.data)) ? revRes.data : [];
+        if (!revisionsExhausted) {
+          if (revRows.length < PATCHES_PAGE_SIZE) revisionsExhausted = true;
+          if (revRows.length) {
+            revRows.forEach(function (r) {
+              var key = 'rv:' + r.id;
+              if (rowById[key]) return;
+              var row = {
+                id: key,
+                scenario_id: r.scenario_id,
+                spec: { intent: r.text || 'rewrite proposed' },
+                status: r.revision_status === 'accepted' ? 'rev-accepted' : 'rev-proposed',
+                applied_at: r.created_at,
+                superseded_by_id: null,
+                __kind: 'revision_variant',
+                __target_block_id: r.target_block_id,
+                __proposed_text: r.proposed_text,
+              };
+              rowById[key] = row;
+              allRows.push(row);
+            });
+            revCursor = revRows[revRows.length - 1].created_at;
+          }
+        }
+        // Sort merged result newest-first so the unified timeline is monotone
+        // across pagination calls.
+        allRows.sort(function (a, b) {
+          var at = a.applied_at || '';
+          var bt = b.applied_at || '';
+          return at < bt ? 1 : at > bt ? -1 : 0;
+        });
         renderList();
       }).catch(function () {
         loading = false;
@@ -838,11 +903,19 @@
       });
     }
 
+
     function statusBadgeClass(status) {
       if (status === 'applied') return 'pm-badge pm-badge-applied';
       if (status === 'superseded') return 'pm-badge pm-badge-superseded';
       if (status === 'undone') return 'pm-badge pm-badge-undone';
+      if (status === 'rev-accepted') return 'pm-badge pm-badge-rev pm-badge-rev-accepted';
+      if (status === 'rev-proposed') return 'pm-badge pm-badge-rev pm-badge-rev-proposed';
       return 'pm-badge';
+    }
+    // Phase 6: distinguish revision-variants visually — quote-mark icon vs
+    // the patch's default. Keeps them legible in a mixed list.
+    function rowIcon(row) {
+      return row && row.__kind === 'revision_variant' ? '<span class="pm-icon pm-icon-rv">“”</span>' : '';
     }
 
     function renderList() {
@@ -883,6 +956,7 @@
               '</a>';
           }
           html += '<li class="pm-patch-row pm-' + escapeHtml(r.status || 'unknown') + '" id="pm-row-' + escapeHtml(String(r.id)) + '">' +
+            rowIcon(r) +
             '<span class="pm-intent">' + escapeHtml(intent) + '</span>' +
             '<span class="pm-when" title="' + escapeHtml(r.applied_at || '') + '">' + escapeHtml(when) + '</span>' +
             '<span class="' + statusBadgeClass(r.status) + '">' + escapeHtml(r.status || '') + '</span>' +
@@ -905,7 +979,7 @@
           }
         });
       });
-      foot.style.display = exhausted ? 'none' : 'flex';
+      foot.style.display = (patchesExhausted && revisionsExhausted) ? 'none' : 'flex';
     }
 
     function cssEscapeId(s) {

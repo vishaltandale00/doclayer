@@ -719,14 +719,14 @@
     <!-- Editor (full bleed) -->
     <div class="panel">
       <div class="panel-header">Document — <span class="muted">draft 1 · 2,840 words · autosaved 2s ago</span></div>
-      <div class="editor" data-prose="drafting-editor-body" style="padding: 48px 96px;">
+      <div class="editor" style="padding: 48px 96px;">
         <h1 class="fade-up d-1">Meta-harnesses</h1>
         <div class="subtitle fade-up d-2">A series, target: AI engineers and builders.</div>
 
-        <h2 class="fade-up d-2">3. Building meta-harnesses</h2>
-        <p class="fade-up d-3">If the harness is the controller, the meta-harness is the controller that authors controllers. It evolves the harness as the task and the user evolve. Two open questions follow: how do you express the search space, and how do you stay within the user's prior?</p>
+        <h2 class="fade-up d-2" data-prose="drafting-editor-body-h2">3. Building meta-harnesses</h2>
+        <p class="fade-up d-3" data-prose="drafting-editor-body-p1">If the harness is the controller, the meta-harness is the controller that authors controllers. It evolves the harness as the task and the user evolve. Two open questions follow: how do you express the search space, and how do you stay within the user's prior?</p>
 
-        <p class="fade-up d-4">The search space isn't free; every harness atom is typed and every mutation is a delta against a manifest the Architect has to emit, which means the model is composing inside a grammar instead of producing raw markup it might or might not get right. That's not the same problem as the one most UI-generating models are trying to solve, and the framing change matters more than the architectural one — once you're picking atoms out of a kit the failure modes look like under-coverage of the kit, not hallucination.</p>
+        <p class="fade-up d-4" data-prose="drafting-editor-body-p2">The search space isn't free; every harness atom is typed and every mutation is a delta against a manifest the Architect has to emit, which means the model is composing inside a grammar instead of producing raw markup it might or might not get right. That's not the same problem as the one most UI-generating models are trying to solve, and the framing change matters more than the architectural one — once you're picking atoms out of a kit the failure modes look like under-coverage of the kit, not hallucination.</p>
 
         <p class="fade-up d-5">
           <span class="typed-line"><span data-typewriter data-tw-text="Staying within the user's prior is the harder half. The harness must remember what was pinned, dismissed, &amp; how you actually write." data-tw-loop="16000" data-tw-speed="0.55"></span></span><span class="editor-cursor"></span>
@@ -759,17 +759,17 @@
         </div>
 
         <div class="variant-stack">
-          <div class="variant v1" data-prose="drafting-variant-1" data-patchable-type="block" data-block-id="drafting-variant-1">
+          <div class="variant v1" data-patchable-type="block" data-block-id="drafting-variant-1">
             <div class="label" data-patchable="drafting-variant-v1-label" style="color: var(--vishal);">your voice · expansive</div>
-            Yeah and the recursive part is what gets me — like, you write a paragraph, the harness fits a voice model on the last few, then the next time you stall it drafts in that same voice, which it learned from you stalling on a paragraph that was already partly drafted by the previous version of itself. Run that loop a year and tbh I'm not sure whose voice it even is anymore; probably some average that drifts toward whichever one of us last approved a lesson.
+            <div class="variant-body" data-prose="drafting-variant-1">Yeah and the recursive part is what gets me — like, you write a paragraph, the harness fits a voice model on the last few, then the next time you stall it drafts in that same voice, which it learned from you stalling on a paragraph that was already partly drafted by the previous version of itself. Run that loop a year and tbh I'm not sure whose voice it even is anymore; probably some average that drifts toward whichever one of us last approved a lesson.</div>
           </div>
-          <div class="variant v2" data-prose="drafting-variant-2" data-patchable-type="block" data-block-id="drafting-variant-2">
+          <div class="variant v2" data-patchable-type="block" data-block-id="drafting-variant-2">
             <div class="label" data-patchable="drafting-variant-v2-label" style="color: var(--akhil);">akhil's voice · denser</div>
-            I feel like voice fidelity isn't really a feature here, it's the constraint the whole thing has to bend around — because if the harness is the intermediary to a world model for the user, and the world model has to be in their voice or the intermediation doesn't hold, then every other knob (density, claim count, lesson approval) is downstream of whether the draft actually sounds like you would've said it; and that's harder than it looks since the model that's supposed to preserve the voice is also the thing perturbing it every time you accept a suggestion.
+            <div class="variant-body" data-prose="drafting-variant-2">I feel like voice fidelity isn't really a feature here, it's the constraint the whole thing has to bend around — because if the harness is the intermediary to a world model for the user, and the world model has to be in their voice or the intermediation doesn't hold, then every other knob (density, claim count, lesson approval) is downstream of whether the draft actually sounds like you would've said it; and that's harder than it looks since the model that's supposed to preserve the voice is also the thing perturbing it every time you accept a suggestion.</div>
           </div>
-          <div class="variant v3" data-prose="drafting-variant-3" data-patchable-type="block" data-block-id="drafting-variant-3">
+          <div class="variant v3" data-patchable-type="block" data-block-id="drafting-variant-3">
             <div class="label" data-patchable="drafting-variant-v3-label">claim-first</div>
-            Voice is the wedge. Mirror the writer's compression or the doc averages out. Every meta-harness that skips this collapses into the same flat tone.
+            <div class="variant-body" data-prose="drafting-variant-3">Voice is the wedge. Mirror the writer's compression or the doc averages out. Every meta-harness that skips this collapses into the same flat tone.</div>
           </div>
         </div>
       </div>

@@ -2170,6 +2170,16 @@ body.id-modal-open { overflow: hidden; }
 .id-patches-modal .pm-badge-applied    { background: var(--accent-soft); color: var(--accent); }
 .id-patches-modal .pm-badge-superseded { background: #2a2026; color: var(--text-muted); text-decoration: line-through; }
 .id-patches-modal .pm-badge-undone     { background: #3a2a18; color: #e7a86b; }
+.id-patches-modal .pm-badge-rev-accepted { background: #1a2a3a; color: var(--vishal); }
+.id-patches-modal .pm-badge-rev-proposed { background: #1a1a26; color: var(--text-muted); border-color: #2a2a3a; }
+.id-patches-modal .pm-icon-rv {
+  display: inline-block;
+  color: var(--vishal);
+  font-family: var(--code);
+  font-size: 11px;
+  margin-right: 4px;
+  opacity: 0.8;
+}
 .id-patches-modal .pm-superseded-ref { grid-area: sup; font-size: 10px; color: var(--text-muted); }
 .id-patches-modal .pm-superseded-by {
   color: var(--text-muted);
@@ -2975,4 +2985,156 @@ body.variant-readonly .patch-preview::after {
 
 @media (prefers-reduced-motion: reduce) {
   .variant-card { transition: none !important; }
+}
+
+/* ---- Revision-variant preview (Phase 6 prose escape hatch) ---- */
+/* A revision-variant proposal is the architect saying "rewrite this prose" —
+ * it can't be a patch because prose lives in Yjs sub-docs. The bubble looks
+ * like a patch preview but uses the vishal accent + a quote-mark visual to
+ * distinguish from a structural patch. */
+.revision-variant-preview {
+  border-color: #6ba0ff44;
+  background: #0c0e15;
+}
+.revision-variant-preview .rv-pill {
+  background: var(--vishal);
+  color: #0a0a0b;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.revision-variant-preview .rv-intent-text {
+  color: var(--text-muted);
+  font-family: var(--code);
+  font-size: 10.5px;
+  margin-left: 6px;
+}
+.rv-target {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin: 4px 0 6px;
+}
+.rv-target-id {
+  background: #07070a;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--vishal);
+  font-family: var(--code);
+}
+.rv-not-found {
+  margin-left: 6px;
+  color: var(--akhil);
+  font-size: 9.5px;
+  font-style: italic;
+}
+.rv-current {
+  background: #07070a;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: var(--code);
+  font-size: 10.5px;
+  color: #ff9b9b;
+  line-height: 1.45;
+  margin-bottom: 4px;
+}
+.rv-current-label {
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+.rv-suggested {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  background: #07070a;
+  border-radius: 4px;
+  padding: 6px 8px 6px 4px;
+  margin-bottom: 4px;
+}
+.rv-suggested-bar {
+  flex: 0 0 3px;
+  background: var(--vishal);
+  border-radius: 2px;
+}
+.rv-suggested-text {
+  font-family: var(--code);
+  font-size: 10.5px;
+  color: var(--text);
+  line-height: 1.45;
+  flex: 1 1 auto;
+  word-break: break-word;
+}
+.rv-rationale {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0 0 6px;
+  line-height: 1.4;
+}
+.rv-accept-btn {
+  background: var(--vishal);
+  color: #0a0a0b;
+  border: 0;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font: 600 10.5px var(--code);
+  cursor: pointer;
+  letter-spacing: 0.01em;
+}
+.rv-accept-btn:disabled { opacity: 0.5; cursor: default; }
+.rv-accept-btn:hover:not(:disabled) { filter: brightness(1.1); }
+.rv-dismiss-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 0;
+  font: 10.5px var(--code);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--border-soft);
+}
+.rv-dismiss-btn:hover:not(:disabled) { color: var(--text); }
+.rv-signin-btn { background: var(--accent); }
+.rv-signin-btn:hover:not(:disabled) { background: var(--accent-2); }
+.rv-accepted .rv-pill { background: var(--ok, #6bff9b); }
+.rv-accepted-row {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--ok, #6bff9b);
+  font-family: var(--code);
+}
+.rv-accepted-label::before {
+  content: "✓ ";
+}
+
+/* P6: drift indicator — applied to [data-prose] blocks whose canonical text
+ * shifted between revision-accept and replay. replayAcceptedRevisions skips
+ * the swap and tags the element so the reader can see the rewrite was dropped.
+ * Cleared on a successful re-accept or fresh replay. */
+[data-revision-stale="1"] {
+  position: relative;
+  text-decoration: underline dashed var(--vishal);
+  text-underline-offset: 3px;
+  cursor: help;
+}
+[data-revision-stale="1"]::after {
+  content: "rewrite skipped — canonical changed";
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  padding: 4px 8px;
+  font-size: 11px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  z-index: 100;
+}
+[data-revision-stale="1"]:hover::after {
+  opacity: 1;
 }

@@ -236,7 +236,96 @@
           ? row.spec.effective_ops : ((row.spec && row.spec.ops) || []);
         ops.forEach(applyOpToDom);
       });
+      // Phase 6 prose escape hatch: replay accepted revision-variant swaps
+      // from localStorage. Real Yjs is out of scope for v1 mocks; this is the
+      // human-accept-in-live-editor simulation. Replay happens AFTER patches
+      // so a patch that changes microcopy on the same element doesn't clobber
+      // an accepted prose rewrite.
+      replayAcceptedRevisions(variantId);
     }).catch(function (err) { console.warn('[doclayer-patch] fetch threw', err); });
+  }
+
+  // FNV-1a 32-bit hex. Non-crypto, drift detection only — used to detect that
+  // the canonical prose at a data-prose target has changed since a revision
+  // was accepted, so we don't overwrite NEW canonical with OLD suggested text.
+  // ~6 lines; see comments.js for the matching helper used at accept time.
+  function fnv1a32Hex(str) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+    }
+    return ('00000000' + h.toString(16)).slice(-8);
+  }
+
+  // Read localStorage for any `doclayer:revision:<variantId>:<blockId>` keys
+  // and swap textContent on matching `[data-prose]` elements. No-op outside
+  // browse mode (we want each viewer's accepted rewrites to be local to
+  // their own variant — browsing someone else's variant doesn't replay your
+  // local accepts).
+  //
+  // P0-1 (defense-in-depth): refuse swap if target has structured descendants
+  // (any [data-prose] / [data-patchable]) — otherwise textContent assignment
+  // would destroy them and later patches/replays would no-op silently.
+  //
+  // P0-2: drift guard. localStorage entries are stored as JSON
+  // `{ text, sourceHash, acceptedAt }` so we can compare hex32(currentText)
+  // against the hash captured at accept time and SKIP if canonical changed.
+  // Legacy plain-string entries (no hash) are accepted unconditionally for
+  // backward compat.
+  function replayAcceptedRevisions(variantId) {
+    if (!variantId || typeof localStorage === 'undefined') return;
+    var prefix = 'doclayer:revision:' + variantId + ':';
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (!key || key.indexOf(prefix) !== 0) continue;
+        var blockId = key.slice(prefix.length);
+        var raw = localStorage.getItem(key);
+        if (raw == null) continue;
+
+        // Parse JSON envelope; fall back to legacy plain-string shape.
+        var text = null, sourceHash = null;
+        if (raw.charAt(0) === '{') {
+          try {
+            var parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object' && typeof parsed.text === 'string') {
+              text = parsed.text;
+              sourceHash = typeof parsed.sourceHash === 'string' ? parsed.sourceHash : null;
+            }
+          } catch (e) { /* fall through to legacy */ }
+        }
+        if (text == null) { text = raw; sourceHash = null; }
+
+        var el = document.querySelector('[data-prose="' + (window.CSS && CSS.escape ? CSS.escape(blockId) : blockId) + '"]');
+        if (!el) continue;
+
+        // Defense-in-depth (P0-1): refuse swap on container with structured
+        // descendants. Skip + warn, do not surface bubble UI (we're replaying).
+        if (el.querySelector('[data-prose], [data-patchable]')) {
+          console.warn('[doclayer-patch] revision replay blocked — target has structured descendants', { blockId: blockId });
+          el.dataset.revisionStale = '1';
+          continue;
+        }
+
+        // P0-2 drift guard: compare current textContent hash to source hash
+        // captured at accept time. Skip if they don't match (canonical drifted).
+        if (sourceHash !== null) {
+          var currentHash = fnv1a32Hex(el.textContent || '');
+          if (currentHash !== sourceHash) {
+            console.warn('[doclayer-patch] revision replay stale — canonical drifted since accept', { blockId: blockId, sourceHash: sourceHash, currentHash: currentHash });
+            el.dataset.revisionStale = '1';
+            continue;
+          }
+        }
+
+        // P6: successful replay — clear any stale flag from a prior session.
+        delete el.dataset.revisionStale;
+        el.textContent = text;
+      }
+    } catch (e) {
+      console.warn('[doclayer-patch] revision replay failed', e);
+    }
   }
 
   // ---- Live apply (called from comments.js after server 2xx) ----

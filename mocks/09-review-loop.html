@@ -1473,15 +1473,15 @@
         </div>
 
         <!-- Editor -->
-        <div class="editor-v" data-prose="review-loop-vishal-body">
+        <div class="editor-v">
           <span class="iterate-indicator">iterate · §3.2 · with akhil's comments</span>
 
           <h1>Meta-harnesses</h1>
           <div class="subtitle">Article 2 · collab loop · drafting §3.2</div>
 
-          <h2>3.2 The chassis is the contract</h2>
+          <h2 data-prose="review-loop-vishal-body-h2">3.2 The chassis is the contract</h2>
 
-          <p>
+          <p data-prose="review-loop-vishal-body-p1">
             A meta-harness isn't a tool that improves a document — it's the chassis that lets two writers and a model
             collaborate without one of them having to translate for the other. The architect emits the workspace; the
             workspace emits the events; the events route to whichever harness has the right surface to receive them.
@@ -1682,44 +1682,44 @@
           <span class="review-banner" data-patchable="review-loop-review-banner">harness shifted · review mode · §3.2 from vishal</span>
 
           <!-- Layer 1: Akhil's own §1 drafting (default, P0-P2 & P6-P7) -->
-          <div class="layer-drafting" data-prose="review-loop-akhil-body">
+          <div class="layer-drafting">
             <h1>Meta-harnesses</h1>
             <div class="subtitle">Article 2 · collab loop · drafting §1</div>
 
-            <h2>1. RLMs, framed claim-first</h2>
-            <p>
+            <h2 data-prose="review-loop-akhil-body-h2">1. RLMs, framed claim-first</h2>
+            <p data-prose="review-loop-akhil-body-p1">
               Reasoning Language Models aren't a new species; they're what happens when the harness around an LLM
               gets reflective enough to grade its own steps.
             </p>
-            <p>
+            <p data-prose="review-loop-akhil-body-p2">
               The eval is the loop, not the token. Once you accept that, every architectural choice downstream —
               memory, tool-use, multi-pass refine — collapses into one question: what are you scoring at each step?
             </p>
-            <p>
+            <p data-prose="review-loop-akhil-body-p3">
               A claim-first opener earns the reader's patience. So: the meta-harness is an architect that
               rewrites itself<span class="editor-cursor akhil-caret"></span>
             </p>
           </div>
 
           <!-- Layer 2: Vishal's §3.2 chunk for review (P3-P5) -->
-          <div class="layer-review" data-prose="review-loop-review-body">
+          <div class="layer-review">
             <h1 style="font-size:15px;color:var(--text-muted);margin-bottom:14px;letter-spacing:0.04em;text-transform:uppercase;font-family:var(--code);font-weight:500;">reviewing · §3.2 · 240 words</h1>
 
-            <h2>3.2 The chassis is the contract</h2>
+            <h2 data-prose="review-loop-review-body-h2">3.2 The chassis is the contract</h2>
 
-            <p>
+            <p data-prose="review-loop-review-body-p1">
               A <span class="flag-sent">meta-harness isn't a tool that improves a document — it's the chassis that lets two writers and a model collaborate without one of them having to translate for the other.</span> The architect emits the workspace; the workspace emits the events; the events route to whichever harness has the right surface to receive them.
             </p>
 
-            <p>
+            <p data-prose="review-loop-review-body-p2">
               <span class="flag-sent research">When the chassis is right, the work collapses into one motion: claim, evidence, counter — all in the same edit.</span>
             </p>
 
-            <p>
+            <p data-prose="review-loop-review-body-p3">
               This is what people miss about <em>self-improving</em> systems: the improvement isn't in the model, it's in the shape of the loop. <span class="flag-sent">A model that hill-climbs against a fixed target is just a better executor. A model whose harness rewrites the target is doing something else entirely</span> — and the chassis is what tells you which.
             </p>
 
-            <p>
+            <p data-prose="review-loop-review-body-p4">
               Every recursive structure has the same failure mode: <span class="flag-sent">the floor it converges to is the one defined by the very thing doing the converging.</span> A meta-harness escapes this by letting the user be part of the convergence condition.
             </p>
           </div>

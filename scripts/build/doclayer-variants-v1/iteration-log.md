@@ -4,6 +4,41 @@ Each iteration appends a 3-5 sentence summary here.
 
 ---
 
+## Iteration 17 — Phase 6 (Architect prompt + prose escape hatch) — COMPLETE 9.20/10
+
+**What happened:** Surgical fix pass for the two P1s from iter 16. Fix 1 (slot regression): `renderPatchPreview` and `renderRevisionVariantPreview` in `mocks/comments.js` now set `slot.dataset.slotKind = 'patch'|'revision'` on first claim; re-render path falls back to `.dlc-patch-slot-claimed[data-slot-kind=...]` lookup and clears innerHTML for reuse. Fix 2 (stale flag): added `[data-revision-stale="1"]` CSS rule in `mocks/style.css` (dashed underline + hover tooltip), cleared the flag on successful accept (`applyRevisionToDom`) and on successful replay (`replayAcceptedRevisions`).
+
+**Adversarial round 3:** Score **9.20/10**. Zero P0s, zero P1s. 5 P2s (revision-render lacks symmetric MutationObserver teardown, `--vishal` for stale color drifts under variant overrides, tooltip clip risk in overflow-hidden ancestors, hardcoded English copy, no slot-count invariant assert). All P2s are non-blocking.
+
+**Score arc:** 8.20 → 8.80 → 9.20.
+
+**Status:** Phase 6 complete. 7 of 8 phases done. Only Phase 7 (Tests) remains. Next iteration dispatches the Phase 7 build agent.
+
+---
+
+## Iteration 16 — Phase 6 (Architect prompt + prose escape hatch) — REVIEW PARTIAL 8.80/10
+
+**What happened:** Fix agent landed all 3 P0s + 5 P1s from iter 15. FNV-1a 32-bit verified byte-correct, 0 ancestor-violations across 8 mocks (HTML demotion moved 9 container `data-prose` attrs down to ~30 new leaf attrs), two-cursor independent pagination in `identity.js`, additive migration `20260513000002_revision_variant_schema_fp.sql`, allowlist validation in `draft-feedback.ts`, dual-emit dual-render in `comments.js`. 29 tests pass.
+
+**Adversarial round 2:** Score **8.80/10**. Caught a regression introduced by the P1-4 fix (`dlc-patch-slot-claimed` never cleared → re-render silent no-op on anon→signed-in flow) and one cosmetic gap (`data-revision-stale` set but no CSS rule, never cleared on successful accept).
+
+**Next iteration:** Surgical 2-line fix pass. This is the 3rd review attempt — pass-or-escalate.
+
+---
+
+## Iteration 15 — Phase 6 (Architect prompt + prose escape hatch) — REVIEW FAILED 8.20/10
+
+**What happened:** Build agent landed ~825 LOC across `api/draft-feedback.ts` (tightened architect prompt with 9 worked examples + REVISION_VARIANT payload schema), 2 new endpoints (`revision-propose.ts`, `revision-accept.ts`), migration `20260513000001_revision_variants.sql` (ALTER on `comments` with `kind`/`target_block_id`/`proposed_text`/`revision_status` + check constraint + owner-accept RLS), client UI in `mocks/comments.js` (vishal-accent bubble, propose→accept two-step), `mocks/patch-renderer.js` `replayAcceptedRevisions()`, audit-trail fold into the patches modal, and 6 `data-prose` ids on 04-review/06-reader-harness.
+
+**Adversarial findings (3 P0s):**
+1. **Ancestor data-prose wipes descendants** — `mocks/06-reader-harness.html:836` puts `data-prose="reader-article-engineer-pm-researcher"` on a `<div class="article">` whose children include `data-patchable="reader-byline"` (line 838) and three nested `data-prose` paragraphs (851-853). `applyRevisionToDom`'s `el.textContent = text` would destroy all of them. Same hazard in `00-flow.html:2499`.
+2. **Stale replay overwrites canonical** — `replayAcceptedRevisions` stores only `text`, no version/hash of the source-at-accept. If canonical prose changes upstream, localStorage replays OLD suggested over NEW canonical forever.
+3. **Propose DoS** — `revision-propose.ts` has no rate limit, runs with service client, and proposals pollute the owner's timeline because `identity.js:828` includes `revision_status='proposed'`. Any signed-in user can flood any public variant's audit.
+
+**Score arc:** 8.20 first attempt. Iteration 16 dispatches a fix agent.
+
+---
+
 ## Iteration 1 — 2026-05-12T22:00Z
 
 **Phase 0** (patchable surface audit) build agent ran. Tagged ~122 leaves across 11 scenarios + index: 25 CSS variables (typing-speed, anim-scale, color tokens, spacing, typography), ~58 microcopy strings, ~32 visibility wrappers, 5 block-level surfaces. Wrote `patchable-surface.md` (~250 lines). Added `data-patchable` + `data-prose` attributes to all mock HTML files and `/* PATCHABLE: */` annotations to `style.css`.

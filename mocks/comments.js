@@ -314,7 +314,13 @@
 
       function handle(out) {
         if (out.status >= 200 && out.status < 300 && out.body && out.body.response) {
-          complete(out.body.response, false, out.body.routedTo, out.body.patch || null);
+          complete(
+            out.body.response,
+            false,
+            out.body.routedTo,
+            out.body.patch || null,
+            out.body.revision_variant || null
+          );
           return;
         }
         if (out.status === 503 && out.body && out.body.fallback === 'canned') {
@@ -335,7 +341,7 @@
         submit.disabled = false;
       }
 
-      function complete(responseText, isCanned, routedTo, patch) {
+      function complete(responseText, isCanned, routedTo, patch, revisionVariant) {
         drafting.classList.remove('on');
         var comment = {
           id: makeId(),
@@ -350,6 +356,7 @@
           createdAt: Date.now(),
           resolved: false,
           patch: patch || null,
+          revisionVariant: revisionVariant || null,
         };
         // Swap to thread view, but type the architect response in.
         switchToThread(bubble, comment, responseText);
@@ -379,9 +386,34 @@
       comment.response = responseText;
       bubbles.push({ comment: comment, bubble: bubble });
       pendingAnchor = null;
-      // Render the patch preview AFTER architect types — feels causal.
-      if (comment.patch) {
+      // Render the patch / revision-variant preview AFTER architect types —
+      // feels causal. P1-4: if BOTH arrive, render both (patch first, then
+      // revision-variant under an "also proposed:" label) — the viewer can
+      // accept either or both independently rather than silently dropping
+      // the revision. Console.warn so dev can see the dual emission.
+      if (comment.patch && comment.revisionVariant) {
+        console.warn('[doclayer-comments] architect emitted both patch and revision-variant — rendering both', {
+          patch: comment.patch,
+          revisionVariant: comment.revisionVariant,
+        });
         renderPatchPreview(bubble, comment);
+        // Insert an "also proposed:" separator + a fresh slot, then render
+        // the revision-variant into the new slot.
+        var primarySlot = bubble.querySelector('.dlc-patch-slot');
+        if (primarySlot && primarySlot.parentNode) {
+          var alsoLabel = document.createElement('div');
+          alsoLabel.className = 'dlc-patch-also-label';
+          alsoLabel.textContent = 'also proposed:';
+          primarySlot.parentNode.insertBefore(alsoLabel, primarySlot.nextSibling);
+          var rvSlot = document.createElement('div');
+          rvSlot.className = 'dlc-patch-slot dlc-patch-slot-also';
+          alsoLabel.parentNode.insertBefore(rvSlot, alsoLabel.nextSibling);
+          renderRevisionVariantPreview(bubble, comment, rvSlot);
+        }
+      } else if (comment.patch) {
+        renderPatchPreview(bubble, comment);
+      } else if (comment.revisionVariant) {
+        renderRevisionVariantPreview(bubble, comment);
       }
       try {
         window.dispatchEvent(new CustomEvent('doclayer:comment-saved', { detail: comment }));
@@ -395,9 +427,21 @@
   // Renders an op diff card inside the response bubble with apply/discard
   // buttons, handles the POST to /api/variants/apply, and surfaces the
   // 60s undo countdown on success.
-  function renderPatchPreview(bubble, comment) {
-    var slot = bubble.querySelector('.dlc-patch-slot');
+  function renderPatchPreview(bubble, comment, explicitSlot) {
+    // P1-4: callers can pass an explicit slot when rendering a second preview
+    // (e.g. dual emit patch+revision). Default to first empty .dlc-patch-slot.
+    var slot = explicitSlot || bubble.querySelector('.dlc-patch-slot:not(.dlc-patch-slot-claimed)');
+    // P6: on re-render (e.g. after sign-in completes), no unclaimed slot exists
+    // because we claimed it during the first render. Reuse the previously
+    // claimed patch slot in this bubble — keyed by data-slot-kind so we don't
+    // grab a revision slot in a dual-emit bubble.
+    if (!slot && !explicitSlot) {
+      slot = bubble.querySelector('.dlc-patch-slot.dlc-patch-slot-claimed[data-slot-kind="patch"]');
+      if (slot) slot.innerHTML = '';
+    }
     if (!slot || !comment.patch) return;
+    slot.classList.add('dlc-patch-slot-claimed');
+    slot.dataset.slotKind = 'patch';
     var patch = comment.patch;
 
     // ---- Identity gate: anonymous viewers can read the preview but get a
@@ -683,6 +727,259 @@
         p.style.display = 'block';
         p.textContent = msg;
         bar.appendChild(p);
+      });
+    });
+  }
+
+  // ---- Revision-variant preview UI ----
+  // Prose escape hatch (DSL spec section g): when the architect classifies a
+  // comment as a prose-rewrite, it emits a revision-variant proposal instead
+  // of a patch. Render a distinct bubble: shows the target prose block, the
+  // current text excerpt, the suggested rewrite, and accept/dismiss buttons.
+  // On accept, POST /api/variants/revision-accept, swap textContent live, and
+  // persist to localStorage so the swap survives reload (mocks have no Yjs).
+  function renderRevisionVariantPreview(bubble, comment, explicitSlot) {
+    // P1-4: accept an explicit slot for dual-emit; otherwise grab the first
+    // unclaimed .dlc-patch-slot. Marks the slot claimed so a subsequent
+    // render finds the NEXT one.
+    var slot = explicitSlot || bubble.querySelector('.dlc-patch-slot:not(.dlc-patch-slot-claimed)');
+    // P6: on re-render (post sign-in), no unclaimed slot remains — reuse the
+    // previously claimed revision slot in this bubble (keyed by data-slot-kind
+    // so we don't accidentally clobber a sibling patch preview).
+    if (!slot && !explicitSlot) {
+      slot = bubble.querySelector('.dlc-patch-slot.dlc-patch-slot-claimed[data-slot-kind="revision"]');
+      if (slot) slot.innerHTML = '';
+    }
+    if (!slot || !comment.revisionVariant) return;
+    slot.classList.add('dlc-patch-slot-claimed');
+    slot.dataset.slotKind = 'revision';
+    var rv = comment.revisionVariant;
+    var blockId = rv.target_block_id || '';
+    var suggested = rv.suggested_text || '';
+    var intent = rv.intent || 'rewrite proposed';
+    var rationale = rv.rationale || '';
+
+    var identity = (window.doclayerIdentity && window.doclayerIdentity.get && window.doclayerIdentity.get()) || null;
+    var isSignedInToVariant = !!(identity && identity.variantId);
+
+    // Resolve target element + current text for the diff preview. We accept
+    // either a data-prose match or (fallback) a substring scan against the
+    // article body. If we can't find the block, we still let the viewer
+    // accept — they just lose the live DOM swap.
+    var targetEl = blockId ? document.querySelector('[data-prose="' + cssEscape(blockId) + '"]') : null;
+    var currentText = targetEl ? (targetEl.textContent || '').trim() : '';
+    var currentExcerpt = currentText.length > 140 ? currentText.slice(0, 137) + '…' : currentText;
+
+    var footHtml = isSignedInToVariant
+      ? '<button class="rv-accept-btn" type="button">accept rewrite</button>' +
+        '<button class="rv-dismiss-btn" type="button">dismiss</button>'
+      : '<button class="rv-accept-btn rv-signin-btn" type="button">sign in to accept</button>' +
+        '<button class="rv-dismiss-btn" type="button">dismiss</button>';
+
+    slot.innerHTML =
+      '<div class="patch-preview revision-variant-preview">' +
+        '<div class="patch-preview-head">' +
+          '<span class="patch-intent rv-pill">rewrite proposed</span>' +
+          '<span class="rv-intent-text">' + escapeHtml(intent) + '</span>' +
+        '</div>' +
+        '<div class="rv-target">' +
+          (blockId
+            ? '<span class="rv-target-label">target · </span><code class="rv-target-id">' + escapeHtml(blockId) + '</code>'
+            : '<span class="rv-target-label">(no target block — accept will only record the proposal)</span>') +
+          (targetEl ? '' : (blockId ? ' <span class="rv-not-found">not on this page</span>' : '')) +
+        '</div>' +
+        (currentExcerpt
+          ? '<div class="rv-current"><span class="rv-current-label">now:</span> ' + escapeHtml(currentExcerpt) + '</div>'
+          : '') +
+        '<div class="rv-suggested"><span class="rv-suggested-bar"></span><div class="rv-suggested-text">' + escapeHtml(suggested) + '</div></div>' +
+        (rationale ? '<div class="rv-rationale">' + escapeHtml(rationale) + '</div>' : '') +
+        '<div class="patch-preview-foot">' + footHtml + '</div>' +
+        '<div class="patch-applying-row" style="display:none">' +
+          '<span class="dlc-pulse"></span>' +
+          '<span class="patch-applying-label">accepting&hellip;</span>' +
+        '</div>' +
+        '<div class="patch-error" style="display:none"></div>' +
+      '</div>';
+
+    var acceptBtn  = slot.querySelector('.rv-accept-btn');
+    var dismissBtn = slot.querySelector('.rv-dismiss-btn');
+    var applying   = slot.querySelector('.patch-applying-row');
+    var errEl      = slot.querySelector('.patch-error');
+
+    function setBusy(on) {
+      applying.style.display = on ? 'flex' : 'none';
+      acceptBtn.disabled = on;
+      dismissBtn.disabled = on;
+    }
+    function setError(msg) {
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    }
+
+    if (!isSignedInToVariant) {
+      acceptBtn.addEventListener('click', function () {
+        if (window.doclayerIdentity && typeof window.doclayerIdentity.openModal === 'function') {
+          window.doclayerIdentity.openModal({});
+        } else if (window.doclayerEnsureIdentity) {
+          window.doclayerEnsureIdentity();
+        }
+        var ac = new AbortController();
+        document.addEventListener('doclayer:identity-ready', function () {
+          try { renderRevisionVariantPreview(bubble, comment); } catch (e) {}
+          ac.abort();
+        }, { signal: ac.signal, once: true });
+        window.addEventListener('doclayer:modal-closed', function () { ac.abort(); }, { signal: ac.signal, once: true });
+      });
+    } else {
+      acceptBtn.addEventListener('click', function () { doAccept(); });
+    }
+    dismissBtn.addEventListener('click', function () {
+      // Local-only dismiss. We don't round-trip a rejection — the proposal
+      // hasn't been persisted yet (propose+accept happen together on click).
+      if (slot.parentNode) slot.parentNode.removeChild(slot);
+    });
+
+    function doAccept() {
+      errEl.style.display = 'none';
+      setBusy(true);
+      // Two-step: propose (persists the row), then accept (flips status).
+      // We do this rather than auto-accepting on propose so the audit trail
+      // shows both 'revision_proposed' and 'revision_accepted' events.
+      proposeRevision(rv, comment).then(function (out) {
+        if (!out || out.status < 200 || out.status >= 300 || !out.body || !out.body.comment_id) {
+          throw new Error((out && out.body && out.body.error) || 'propose_failed');
+        }
+        return acceptRevision(out.body.comment_id);
+      }).then(function (out) {
+        setBusy(false);
+        if (out.status >= 200 && out.status < 300 && out.body) {
+          finalizeAcceptUi(out.body);
+          return;
+        }
+        var msg = (out.body && out.body.error) || ('http ' + out.status);
+        setError("couldn't accept: " + msg);
+      }).catch(function (e) {
+        setBusy(false);
+        setError("couldn't accept — " + ((e && e.message) || 'network'));
+      });
+    }
+
+    function finalizeAcceptUi(serverBody) {
+      var acceptedText = (serverBody && typeof serverBody.accepted_text === 'string') ? serverBody.accepted_text : suggested;
+      var serverBlock = (serverBody && typeof serverBody.target_block_id === 'string') ? serverBody.target_block_id : blockId;
+      // Live DOM swap + localStorage persistence so reload replays it.
+      var swap = applyRevisionToDom(serverBlock, acceptedText);
+      var preview = slot.querySelector('.patch-preview');
+      if (preview) preview.classList.add('rv-accepted');
+      var foot = slot.querySelector('.patch-preview-foot');
+      if (foot) foot.style.display = 'none';
+      var done = document.createElement('div');
+      done.className = 'rv-accepted-row';
+      if (swap && swap.ok === false && swap.reason === 'structured_descendants') {
+        done.classList.add('rv-accepted-blocked');
+        done.innerHTML = '<span class="rv-accepted-label">accepted · rewrite blocked: target has structured descendants</span>';
+      } else {
+        done.innerHTML = '<span class="rv-accepted-label">accepted · prose updated</span>';
+      }
+      slot.querySelector('.patch-preview').appendChild(done);
+      comment.acceptedRevisionId = serverBody && serverBody.comment_id;
+      try {
+        window.dispatchEvent(new CustomEvent('doclayer:revision-accepted', {
+          detail: { commentId: comment.id, blockId: serverBlock, suggestedText: acceptedText },
+        }));
+      } catch (e) {}
+    }
+  }
+
+  // FNV-1a 32-bit hex. Non-crypto, FNV-1a 32-bit, drift detection only.
+  function fnv1a32Hex(str) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+    }
+    return ('00000000' + h.toString(16)).slice(-8);
+  }
+
+  // Apply the rewrite to the DOM and persist locally so reload replays it.
+  // Real Yjs integration is out of scope for v1 mocks — this is the
+  // human-accept-in-live-editor simulation.
+  //
+  // P0-1 (defense-in-depth): refuse swap if target has structured descendants
+  // ([data-prose] / [data-patchable]) — textContent assignment would destroy
+  // those nodes and later patches/replays would no-op silently. We surface a
+  // 'rewrite blocked' state on the bubble so the user sees why.
+  //
+  // P0-2: capture pre-swap textContent hash to enable drift detection on
+  // later replays. localStorage value is the JSON envelope
+  // `{ text, sourceHash, acceptedAt }` — backward compatible with legacy
+  // plain-string entries (replayAcceptedRevisions handles either).
+  //
+  // Returns: { ok: bool, reason?: string }
+  function applyRevisionToDom(blockId, text) {
+    if (!blockId) return { ok: false, reason: 'no_block_id' };
+    var el = document.querySelector('[data-prose="' + cssEscape(blockId) + '"]');
+    if (el && el.querySelector('[data-prose], [data-patchable]')) {
+      console.warn('[doclayer-comments] revision apply blocked — target has structured descendants', { blockId: blockId });
+      return { ok: false, reason: 'structured_descendants' };
+    }
+    var sourceHash = el ? fnv1a32Hex(el.textContent || '') : null;
+    if (el) {
+      // P6: clear any prior drift flag — this is a fresh accept on the live DOM.
+      delete el.dataset.revisionStale;
+      el.textContent = text;
+    }
+    var variantId = (window.doclayerIdentity && window.doclayerIdentity.getVariantId)
+      ? window.doclayerIdentity.getVariantId() : null;
+    if (variantId) {
+      try {
+        var envelope = JSON.stringify({
+          text: text,
+          sourceHash: sourceHash,
+          acceptedAt: Date.now(),
+        });
+        localStorage.setItem('doclayer:revision:' + variantId + ':' + blockId, envelope);
+      } catch (e) {}
+    }
+    return { ok: true };
+  }
+
+  function proposeRevision(rv, comment) {
+    var variantId = (window.doclayerIdentity && window.doclayerIdentity.getVariantId)
+      ? window.doclayerIdentity.getVariantId() : null;
+    var payload = {
+      variant_id: variantId,
+      scenario_id: SCENARIO,
+      viewer_comment_id: rv.viewer_comment_id || comment.id,
+      target_block_id: rv.target_block_id || '',
+      suggested_text: rv.suggested_text,
+      rationale: rv.rationale || '',
+      intent: rv.intent || '',
+      anchor: comment.anchor,
+    };
+    // P1-5: forward schema_fp so the server can reject stale proposals (409).
+    if (rv.schema_fp) payload.schema_fp = rv.schema_fp;
+    return authedFetch('/api/variants/revision-propose', payload);
+  }
+  function acceptRevision(commentId) {
+    return authedFetch('/api/variants/revision-accept', { comment_id: commentId, action: 'accept' });
+  }
+  function authedFetch(url, payload) {
+    var supa = (window.doclayerIdentity && window.doclayerIdentity.getSupabase) ? window.doclayerIdentity.getSupabase() : null;
+    var tokenP = supa ? supa.auth.getSession().then(function (r) {
+      return r && r.data && r.data.session && r.data.session.access_token;
+    }) : Promise.resolve(null);
+    return tokenP.then(function (token) {
+      return fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? ('Bearer ' + token) : '',
+        },
+        body: JSON.stringify(payload),
+      }).then(function (res) {
+        return res.json().then(function (j) { return { status: res.status, body: j }; },
+                              function () { return { status: res.status, body: {} }; });
       });
     });
   }
