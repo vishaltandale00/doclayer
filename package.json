@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "doclayer mocks + feedback drafting serverless function",
+  "scripts": {
+    "build": "node scripts/build-inject-env.js"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.1"
   },

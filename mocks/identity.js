@@ -1,18 +1,19 @@
 /* =============================================================
-   doclayer identity + comment-persistence layer.
+   doclayer identity layer (Phase 1 — Supabase magic-link auth).
 
-   Two localStorage keyspaces:
-     doclayer-user        → {handle, color, avatar, createdAt}
-     doclayer-comments-v2 → { [handle]: { [scenarioId]: [Comment] } }
+   Replaces the old localStorage-handle layer. Identity is now an
+   authenticated Supabase session. When config is missing (no
+   SUPABASE_URL/ANON_KEY injected), this falls back to an
+   anonymous-localStorage handle so mocks keep working offline.
 
-   Public globals:
-     window.doclayerIdentity  — get/ensure/update/clear/onChange
-     window.doclayerComments  — allForScenario / save / resolve / remove …
+   Public globals (preserved API surface):
+     window.doclayerIdentity  — get/ensure/update/clear/onChange/signOut/getVariantId
+     window.doclayerComments  — local-only comment cache (legacy fallback)
      window.doclayerEnsureIdentity()  — convenience shortcut
      window.doclayerCommentsToRender  — array pre-populated for comments.js
 
    Listens for CustomEvents emitted by comments.js:
-     doclayer:comment-saved      → persist comment
+     doclayer:comment-saved      → persist comment (local fallback)
      doclayer:comment-resolved   → flip resolved flag
    ============================================================= */
 (function () {
@@ -21,7 +22,124 @@
   var USER_KEY     = 'doclayer-user';
   var COMMENTS_KEY = 'doclayer-comments-v2';
 
-  // -------- storage helpers ----------------------------------
+  // -------- supabase init -------------------------------------
+  var supa = null;          // SupabaseClient | null
+  var supaReady = null;     // Promise<SupabaseClient | null>
+  var currentSession = null;
+  var currentVariantId = null;
+  var currentIdentity = null;
+  var authSubscription = null; // returned by supabase.auth.onAuthStateChange — unsubscribe on signOut
+  var triggerFallbackFired = false; // sticky session flag — surfaces "⚠ degraded mode" pill in gear panel
+
+  // INVARIANT: all writes to `currentIdentity` MUST go through setIdentity().
+  // It atomically assigns and notifies subscribers exactly once. Direct
+  // assignment elsewhere is a bug — it bypasses notify() and breaks the
+  // single-funnel guarantee onAuthStateChange / ensure() / ready() rely on.
+  function setIdentity(id) {
+    currentIdentity = id;
+    try {
+      if (window && window.console && typeof console.debug === 'function') {
+        console.debug('[doclayer] setIdentity', id && (id.email || id.handle || id.userId) || null);
+      }
+    } catch (e) { /* swallow */ }
+    notify(currentIdentity);
+  }
+
+  function getConfig() {
+    var c = window.__doclayerConfig || {};
+    var url = c.SUPABASE_URL;
+    var key = c.SUPABASE_ANON_KEY;
+    if (!url || !key) return null;
+    if (/^__SUPABASE/.test(url) || /^__SUPABASE/.test(key)) return null; // unsubstituted placeholders
+    return { url: url, key: key };
+  }
+
+  function initSupabase() {
+    if (supaReady) return supaReady;
+    var cfg = getConfig();
+    if (!cfg) {
+      supaReady = Promise.resolve(null);
+      return supaReady;
+    }
+    supaReady = import('https://esm.sh/@supabase/supabase-js@2').then(function (mod) {
+      supa = mod.createClient(cfg.url, cfg.key, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+      });
+      var sub = supa.auth.onAuthStateChange(function (event, session) {
+        currentSession = session || null;
+        if (!session) {
+          currentVariantId = null;
+          setIdentity(null);
+          return;
+        }
+        hydrateFromSession(session).then(function (id) {
+          setIdentity(id);
+          try { document.dispatchEvent(new CustomEvent('doclayer:identity-ready', { detail: id })); } catch (e) {}
+        });
+      });
+      // supabase-js v2 returns { data: { subscription: { unsubscribe } } } — capture for cleanup.
+      authSubscription = (sub && sub.data && sub.data.subscription) || null;
+      return supa;
+    }).catch(function (err) {
+      console.warn('[doclayer] supabase init failed, falling back to local mode', err);
+      supa = null;
+      return null;
+    });
+    return supaReady;
+  }
+
+  function hydrateFromSession(session) {
+    currentSession = session;
+    var email = session.user.email || '';
+    var color = colorFor(email);
+    var avatar = avatarFor(email);
+    // Look up the user's main variant. Trigger should have auto-created it.
+    return supa.from('variants')
+      .select('id, name')
+      .eq('user_id', session.user.id)
+      .eq('name', 'main')
+      .maybeSingle()
+      .then(function (res) {
+        var variantId = res && res.data ? res.data.id : null;
+        if (!variantId) {
+          // Trigger may not have fired (edge case) — create one. This is a
+          // DEFENSE-IN-DEPTH path, NOT an expected branch. If we get here in
+          // prod it means the on_auth_user_created trigger silently broke or
+          // was never installed. Loud-warn AND emit a custom event so dashboards
+          // / monitoring can pick it up; flip a sticky session flag so the gear
+          // panel renders a "⚠ degraded mode" pill.
+          console.warn('[doclayer] DB trigger did not auto-create main variant; falling back to client insert. This is a prod signal.');
+          triggerFallbackFired = true;
+          try {
+            window.dispatchEvent(new CustomEvent('doclayer:trigger-fallback', {
+              detail: { userId: session.user.id, attemptedAt: new Date().toISOString() },
+            }));
+          } catch (e) { /* swallow */ }
+          return supa.from('variants')
+            .insert({ user_id: session.user.id, name: 'main', is_public: true })
+            .select('id')
+            .single()
+            .then(function (ins) {
+              currentVariantId = ins && ins.data ? ins.data.id : null;
+              return {
+                email: email, handle: email, color: color, avatar: avatar,
+                variantId: currentVariantId, userId: session.user.id,
+              };
+            });
+        }
+        currentVariantId = variantId;
+        return {
+          email: email, handle: email, color: color, avatar: avatar,
+          variantId: variantId, userId: session.user.id,
+        };
+      })
+      .catch(function (err) {
+        console.warn('[doclayer] variant lookup failed', err);
+        return { email: email, handle: email, color: color, avatar: avatar, variantId: null, userId: session.user.id };
+      });
+  }
+
+  // -------- storage helpers (local fallback) ------------------
   function readJSON(key, fallback) {
     try {
       var raw = localStorage.getItem(key);
@@ -32,34 +150,37 @@
     try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
   }
 
-  // -------- identity derivation ------------------------------
-  // Deterministic 32-bit hash (djb2 variant) so handle → color is stable.
+  // -------- color / avatar derivation -------------------------
   function hashHandle(s) {
     var h = 5381;
-    for (var i = 0; i < s.length; i++) {
-      h = ((h << 5) + h + s.charCodeAt(i)) | 0;
-    }
+    for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
     return Math.abs(h);
   }
   function colorFor(handle) {
-    var h = hashHandle(handle.toLowerCase());
+    var h = hashHandle(String(handle || '').toLowerCase());
     var hue = h % 360;
-    // saturation 60-70%, lightness 55-65% — vibrant, readable on dark bg.
     var sat = 60 + (h % 11);
     var lig = 55 + ((h >> 4) % 11);
     return 'hsl(' + hue + ', ' + sat + '%, ' + lig + '%)';
   }
   function avatarFor(handle) {
-    var clean = String(handle || '').replace(/[^A-Za-z0-9]/g, '');
-    var src = clean || handle || '?';
+    var s = String(handle || '');
+    // For emails, prefer the local-part initials.
+    if (s.indexOf('@') > 0) s = s.split('@')[0];
+    var clean = s.replace(/[^A-Za-z0-9]/g, '');
+    var src = clean || s || '?';
     return src.slice(0, 2).toUpperCase();
   }
   function decorate(record) {
     if (!record) return null;
+    var handle = record.email || record.handle;
     return {
-      handle: record.handle,
-      color: record.color || colorFor(record.handle),
-      avatar: avatarFor(record.handle),
+      handle: handle,
+      email: record.email || null,
+      color: record.color || colorFor(handle),
+      avatar: avatarFor(handle),
+      variantId: record.variantId || null,
+      userId: record.userId || null,
       createdAt: record.createdAt,
     };
   }
@@ -72,11 +193,11 @@
     });
   }
 
-  // -------- identity store ------------------------------------
-  function getStored() {
+  // -------- local-fallback identity store ---------------------
+  function getStoredLocal() {
     return decorate(readJSON(USER_KEY, null));
   }
-  function setStored(handle) {
+  function setStoredLocal(handle) {
     var trimmed = String(handle || '').trim();
     if (!trimmed) throw new Error('empty handle');
     var record = {
@@ -90,32 +211,54 @@
     try { document.dispatchEvent(new CustomEvent('doclayer:identity-ready', { detail: id })); } catch (e) {}
     return id;
   }
-  function clearStored() {
+  function clearStoredLocal() {
     try { localStorage.removeItem(USER_KEY); } catch (e) {}
     notify(null);
   }
 
-  // -------- onboarding modal ----------------------------------
-  var modalEl = null;
-  var modalPending = null; // {resolve, reject} for current ensure() promise
+  function getStored() {
+    // In supabase mode, currentIdentity is canonical.
+    if (supa) return currentIdentity || null;
+    return getStoredLocal();
+  }
 
-  function buildModal(prefill) {
+  // -------- onboarding modal (email magic link) ---------------
+  var modalEl = null;
+  var modalPending = null;
+
+  function buildModal(mode, prefill) {
     var wrap = document.createElement('div');
     wrap.className = 'id-modal';
     wrap.setAttribute('role', 'dialog');
     wrap.setAttribute('aria-modal', 'true');
-    wrap.innerHTML =
-      '<div class="id-modal-scrim"></div>' +
-      '<div class="id-modal-card" role="document">' +
-        '<div class="id-modal-title">the harness needs to know what to call you</div>' +
-        '<div class="id-modal-lede">you\'ll show up in the loop as this handle. you can change it later.</div>' +
-        '<input class="id-modal-input" type="text" maxlength="20" placeholder="your handle…" autocomplete="off" spellcheck="false" />' +
-        '<div class="id-modal-err" aria-live="polite"></div>' +
-        '<div class="id-modal-row">' +
-          '<button class="id-modal-cancel" type="button">cancel</button>' +
-          '<button class="id-modal-submit" type="button">join the loop ↗</button>' +
-        '</div>' +
-      '</div>';
+    if (mode === 'magic') {
+      wrap.innerHTML =
+        '<div class="id-modal-scrim"></div>' +
+        '<div class="id-modal-card" role="document">' +
+          '<div class="id-modal-title">sign in to start your variant</div>' +
+          '<div class="id-modal-lede">we\'ll email you a magic link. your variant lives at your email — no password.</div>' +
+          '<input class="id-modal-input" type="email" placeholder="you@example.com" autocomplete="email" spellcheck="false" />' +
+          '<div class="id-modal-err" aria-live="polite"></div>' +
+          '<div class="id-modal-row">' +
+            '<button class="id-modal-cancel" type="button">cancel</button>' +
+            '<button class="id-modal-submit" type="button">send magic link →</button>' +
+          '</div>' +
+        '</div>';
+    } else {
+      // local-fallback handle mode
+      wrap.innerHTML =
+        '<div class="id-modal-scrim"></div>' +
+        '<div class="id-modal-card" role="document">' +
+          '<div class="id-modal-title">the harness needs to know what to call you</div>' +
+          '<div class="id-modal-lede">running offline — pick a handle. you can change it later.</div>' +
+          '<input class="id-modal-input" type="text" maxlength="20" placeholder="your handle…" autocomplete="off" spellcheck="false" />' +
+          '<div class="id-modal-err" aria-live="polite"></div>' +
+          '<div class="id-modal-row">' +
+            '<button class="id-modal-cancel" type="button">cancel</button>' +
+            '<button class="id-modal-submit" type="button">join the loop ↗</button>' +
+          '</div>' +
+        '</div>';
+    }
     var input = wrap.querySelector('.id-modal-input');
     if (prefill) input.value = prefill;
     return wrap;
@@ -132,13 +275,26 @@
     modalPending = null;
   }
 
+  function showSentConfirmation(card, email) {
+    card.innerHTML =
+      '<div class="id-modal-title">check your inbox</div>' +
+      '<div class="id-modal-lede">we sent a magic link to <b>' + escapeHtml(email) + '</b>. click it to sign in. you can close this dialog.</div>' +
+      '<div class="id-modal-row">' +
+        '<button class="id-modal-cancel" type="button">close</button>' +
+      '</div>';
+    card.querySelector('.id-modal-cancel').addEventListener('click', function () { closeModal('commit'); });
+  }
+
   function openModal(opts) {
     opts = opts || {};
+    var cfg = getConfig();
+    var mode = cfg ? 'magic' : 'local';
     if (modalEl) closeModal('cancel');
-    modalEl = buildModal(opts.prefill);
+    modalEl = buildModal(mode, opts.prefill);
     document.body.appendChild(modalEl);
     document.body.classList.add('id-modal-open');
 
+    var card   = modalEl.querySelector('.id-modal-card');
     var input  = modalEl.querySelector('.id-modal-input');
     var errEl  = modalEl.querySelector('.id-modal-err');
     var submit = modalEl.querySelector('.id-modal-submit');
@@ -150,10 +306,32 @@
     function fail(msg) { errEl.textContent = msg; input.focus(); }
     function commit() {
       var v = input.value.trim();
+      if (mode === 'magic') {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return fail('that doesn\'t look like an email.');
+        submit.disabled = true;
+        submit.textContent = 'sending…';
+        initSupabase().then(function (client) {
+          if (!client) { submit.disabled = false; submit.textContent = 'send magic link →'; return fail('auth unavailable — try later.'); }
+          return client.auth.signInWithOtp({
+            email: v,
+            // Strip hash/query so Supabase's appended #access_token=… doesn't collide
+            // with any existing fragment state.
+            options: { emailRedirectTo: window.location.origin + window.location.pathname },
+          }).then(function (res) {
+            if (res.error) { submit.disabled = false; submit.textContent = 'send magic link →'; return fail(res.error.message); }
+            showSentConfirmation(card, v);
+          });
+        }).catch(function (err) {
+          submit.disabled = false; submit.textContent = 'send magic link →';
+          fail((err && err.message) || 'send failed');
+        });
+        return;
+      }
+      // local fallback
       if (v.length < 1) return fail('your handle can\'t be empty.');
       if (v.length > 20) return fail('keep it under 20 characters.');
       if (/^\s*$/.test(v)) return fail('your handle can\'t be only whitespace.');
-      var id = setStored(v);
+      var id = setStoredLocal(v);
       var pending = modalPending;
       modalPending = null;
       closeModal('commit');
@@ -170,7 +348,7 @@
     });
   }
 
-  // -------- comment storage -----------------------------------
+  // -------- comment storage (local fallback only) -------------
   function readAllComments() { return readJSON(COMMENTS_KEY, {}); }
   function writeAllComments(obj) { writeJSON(COMMENTS_KEY, obj); }
 
@@ -200,7 +378,6 @@
       resolved: false,
       author: { handle: id.handle, color: id.color },
     }, comment);
-    // Don't double-insert if comments.js already assigned an id we've stored.
     var existing = list.findIndex(function (c) { return c.id === stored.id; });
     if (existing >= 0) list[existing] = stored;
     else list.push(stored);
@@ -240,20 +417,91 @@
     writeAllComments(all);
   }
 
+  // -------- supabase signOut (with listener cleanup) ----------
+  function doSignOut() {
+    if (!supa) return Promise.resolve();
+    var p = supa.auth.signOut();
+    // Tear down the onAuthStateChange listener so subscribers don't accumulate
+    // across sign-in/sign-out cycles within the same page lifetime.
+    try {
+      if (authSubscription && typeof authSubscription.unsubscribe === 'function') {
+        authSubscription.unsubscribe();
+      }
+    } catch (e) { /* swallow */ }
+    authSubscription = null;
+    return p;
+  }
+
+  // -------- delete-variant (auth mode) ------------------------
+  function deleteMyVariant() {
+    if (!supa || !currentIdentity || !currentIdentity.variantId) return Promise.resolve(false);
+    return supa.from('variants').delete().eq('id', currentIdentity.variantId).then(function (res) {
+      if (res.error) { console.warn('[doclayer] delete variant failed', res.error); return false; }
+      // Cascade kills comments/patches/versions. Sign out after.
+      return doSignOut().then(function () { return true; });
+    });
+  }
+
   // -------- public APIs ---------------------------------------
   window.doclayerIdentity = {
     get: getStored,
     ensure: function () {
-      var id = getStored();
-      if (id) return Promise.resolve(id);
-      return new Promise(function (resolve, reject) {
-        modalPending = { resolve: resolve, reject: reject };
-        openModal({});
+      // Kick off init; if a session exists, resolve from it. Otherwise prompt.
+      return initSupabase().then(function (client) {
+        if (!client) {
+          var id = getStoredLocal();
+          if (id) return Promise.resolve(id);
+          return new Promise(function (resolve, reject) {
+            modalPending = { resolve: resolve, reject: reject };
+            openModal({});
+          });
+        }
+        return client.auth.getSession().then(function (res) {
+          var session = res && res.data && res.data.session;
+          if (session) {
+            return hydrateFromSession(session).then(function (id) {
+              setIdentity(id);
+              return id;
+            });
+          }
+          return new Promise(function (resolve, reject) {
+            modalPending = { resolve: resolve, reject: reject };
+            openModal({});
+          });
+        });
       });
     },
-    update: function (handle) { return setStored(handle); },
-    clear: function () { clearStored(); },
-    onChange: function (fn) { if (typeof fn === 'function') subscribers.push(fn); },
+    update: function (handle) {
+      // In supabase mode, identity comes from the session and cannot be locally rewritten —
+      // writing to localStorage here would shadow the canonical identity. No-op with a warn.
+      if (supa) {
+        console.warn('[doclayer] identity.update() ignored while signed in — identity is owned by the Supabase session.');
+        return currentIdentity || null;
+      }
+      return setStoredLocal(handle);
+    },
+    clear: function () {
+      if (supa) return doSignOut();
+      clearStoredLocal();
+      return Promise.resolve();
+    },
+    signOut: function () {
+      if (supa) return doSignOut();
+      clearStoredLocal();
+      return Promise.resolve();
+    },
+    onChange: function (fn) {
+      if (typeof fn !== 'function') return function () {};
+      subscribers.push(fn);
+      // Return an unsubscribe handle so callers can clean up.
+      return function off() {
+        var i = subscribers.indexOf(fn);
+        if (i >= 0) subscribers.splice(i, 1);
+      };
+    },
+    getVariantId: function () { return (currentIdentity && currentIdentity.variantId) || null; },
+    getSupabase: function () { return supa; },
+    deleteMyVariant: deleteMyVariant,
   };
   window.doclayerEnsureIdentity = function () {
     return window.doclayerIdentity.ensure();
@@ -283,7 +531,7 @@
     resolveComment(e.detail.id || e.detail);
   });
 
-  // -------- scenario detection (mirrors feedback.js) ----------
+  // -------- scenario detection --------------------------------
   function detectScenario() {
     var body = document.body;
     if (body && body.dataset && body.dataset.scenario) return body.dataset.scenario;
@@ -332,28 +580,47 @@
       var totalCount = 0;
       Object.keys(myAll).forEach(function (k) { totalCount += (myAll[k] || []).length; });
       var thisCount = (myAll[scenario] || []).length;
+      var hasAuth = !!getConfig();
 
       if (!id) {
         panel.innerHTML =
           '<div class="id-set-head"><span>identity</span>' +
             '<button class="id-set-close" type="button" aria-label="close">×</button></div>' +
           '<div class="id-set-body">' +
-            '<div class="id-set-anon">you\'re anonymous. drop a comment or join the loop to claim a handle.</div>' +
-            '<button class="id-set-action id-set-join" type="button">join the loop ↗</button>' +
+            '<div class="id-set-anon">' + (hasAuth
+              ? 'sign in to start a variant. one magic-link email, no password.'
+              : 'you\'re anonymous. drop a comment or join the loop to claim a handle.') +
+            '</div>' +
+            '<button class="id-set-action id-set-join" type="button">' +
+              (hasAuth ? 'sign in →' : 'join the loop ↗') + '</button>' +
           '</div>';
       } else {
+        var label = id.email ? 'signed in as' : 'your handle';
+        var variantLine = id.variantId
+          ? '<div class="id-set-variant">variant · <code>' + escapeHtml(String(id.variantId).slice(0, 8)) + '</code></div>'
+          : '';
+        // Surface trigger-fallback as a degraded-mode pill. Session-sticky.
+        var degradedPill = triggerFallbackFired
+          ? '<div class="id-set-degraded" style="display:inline-block;margin:6px 0;padding:2px 8px;border-radius:10px;background:#fef3c7;color:#92400e;font-size:11px;font-weight:600;" title="DB trigger did not fire — variant created via client fallback. Check the on_auth_user_created trigger.">⚠ degraded mode</div>'
+          : '';
         panel.innerHTML =
           '<div class="id-set-head"><span>identity</span>' +
             '<button class="id-set-close" type="button" aria-label="close">×</button></div>' +
           '<div class="id-set-body">' +
             '<div class="id-set-you">' +
               '<span class="id-set-avatar" style="background:' + id.color + '">' + escapeHtml(id.avatar) + '</span>' +
-              '<span class="id-set-handle">' + escapeHtml(id.handle) + '</span>' +
+              '<span class="id-set-handle"><span class="id-set-label">' + label + '</span>' + escapeHtml(id.email || id.handle) + '</span>' +
             '</div>' +
+            variantLine +
+            degradedPill +
             '<div class="id-set-stats">your comments · <b>' + totalCount + '</b> total · <b>' + thisCount + '</b> in this scenario</div>' +
-            '<button class="id-set-action id-set-change" type="button">change handle</button>' +
+            (id.email
+              ? '<button class="id-set-action id-set-signout" type="button">sign out</button>'
+              : '<button class="id-set-action id-set-change" type="button">change handle</button>') +
             '<button class="id-set-action id-set-see" type="button">see all your comments →</button>' +
-            '<button class="id-set-action id-set-danger id-set-forget" type="button">forget me</button>' +
+            '<button class="id-set-action id-set-danger id-set-forget" type="button">' +
+              (id.email ? 'delete my variant + all comments' : 'forget me') +
+            '</button>' +
           '</div>';
       }
       bindPanel(id);
@@ -372,12 +639,22 @@
         shut();
         openModal({ prefill: id ? id.handle : '' });
       });
+      var signout = panel.querySelector('.id-set-signout');
+      if (signout) signout.addEventListener('click', function () {
+        shut();
+        window.doclayerIdentity.signOut();
+      });
       var forget = panel.querySelector('.id-set-forget');
       if (forget) forget.addEventListener('click', function () {
-        if (!window.confirm('forget your handle and delete all your comments?')) return;
-        clearCurrentUserComments();
-        clearStored();
-        shut();
+        if (id && id.email) {
+          if (!window.confirm('delete your variant and all comments? this cannot be undone.')) return;
+          deleteMyVariant().then(function () { shut(); });
+        } else {
+          if (!window.confirm('forget your handle and delete all your comments?')) return;
+          clearCurrentUserComments();
+          clearStoredLocal();
+          shut();
+        }
       });
       var see = panel.querySelector('.id-set-see');
       if (see) see.addEventListener('click', function () {
@@ -470,14 +747,24 @@
     else fn();
   }
   ready(function () {
-    var id = getStored();
-    var scenario = detectScenario();
-    // Pre-populate the render queue for comments.js (Phase 1).
-    if (id) {
-      window.doclayerCommentsToRender = commentsFor(id.handle, scenario);
-    } else {
-      window.doclayerCommentsToRender = [];
-    }
-    buildGear();
+    initSupabase().then(function (client) {
+      if (client) {
+        // Pick up session (including from magic-link redirect).
+        client.auth.getSession().then(function (res) {
+          var session = res && res.data && res.data.session;
+          if (session) {
+            return hydrateFromSession(session).then(function (id) {
+              setIdentity(id);
+              try { document.dispatchEvent(new CustomEvent('doclayer:identity-ready', { detail: id })); } catch (e) {}
+            });
+          }
+        });
+      }
+      // Pre-populate the render queue for comments.js (local fallback only).
+      var id = supa ? null : getStoredLocal();
+      var scenario = detectScenario();
+      window.doclayerCommentsToRender = id ? commentsFor(id.handle, scenario) : [];
+      buildGear();
+    });
   });
 })();

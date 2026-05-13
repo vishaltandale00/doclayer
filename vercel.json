@@ -1,4 +1,6 @@
 {
+  "buildCommand": "node scripts/build-inject-env.js",
+  "outputDirectory": "dist",
   "redirects": [
     { "source": "/", "destination": "/mocks/", "permanent": false }
   ]

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "build_id": "doclayer-variants-v1",
   "started_at": "2026-05-12T22:00:00Z",
-  "iteration": 2,
+  "iteration": 5,
   "iteration_cap": 20,
   "stop_reason": null,
   "phases": [
@@ -13,25 +13,27 @@
       "build_agent_ran": true,
       "adversarial_score": 9.17,
       "review_attempts": 2,
-      "last_findings": {
-        "verdict": "PASS",
-        "score": 9.17,
-        "optional_nits": [
-          {"id": "n1", "severity": "low", "issue": "multiplayer-stuck-suggestion key maps to /variant/microcopy/multiplayer-stuck-body — key/path divergence"},
-          {"id": "n2", "severity": "low", "issue": "bootstrap label selectors still use .field:nth-of-type(N) — f11 incomplete for this row"},
-          {"id": "n3", "severity": "low", "issue": "colorToken says 'the 16 base CSS colors' without enumerating; fingerprint reproducibility hazard"}
-        ]
-      },
+      "last_findings": null,
       "completed_at": "2026-05-12T22:25:00Z"
     },
     {
       "id": 1,
       "name": "Supabase foundation",
-      "status": "pending",
-      "build_agent_ran": false,
-      "adversarial_score": null,
-      "last_findings": null,
-      "completed_at": null,
+      "status": "complete",
+      "build_agent_ran": true,
+      "adversarial_score": 9.28,
+      "review_attempts": 3,
+      "last_findings": {
+        "verdict": "PASS",
+        "score": 9.28,
+        "optional_nits": [
+          {"id": "n1", "issue": "Add `if not exists` to table creates for replay-safety in disaster recovery."},
+          {"id": "n2", "issue": "Consider patches_audit_after_delete trigger so owner deletes leave audit row."},
+          {"id": "n3", "issue": "After signOut() in auth mode, fall through to getStoredLocal() instead of empty state."}
+        ],
+        "user_action_blocker": "supabase_login_required — migration applies after: ! supabase login && cd /Users/vishaltandale/ProjectsDev/doclayer && supabase link --project-ref ritjqumjhbkujnvyfkwi && supabase db push"
+      },
+      "completed_at": "2026-05-12T22:54:00Z",
       "depends_on": [0]
     },
     {
@@ -96,6 +98,6 @@
     }
   ],
   "convergence": null,
-  "best_score_seen": 9.17,
+  "best_score_seen": 9.28,
   "all_phases_complete": false
 }

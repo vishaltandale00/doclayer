@@ -1946,7 +1946,10 @@ body.id-modal-open { overflow: hidden; }
   font-weight: 700;
   color: #0a1408;
 }
-.id-set-handle { font-family: var(--code); font-size: 13px; color: var(--text); }
+.id-set-handle { font-family: var(--code); font-size: 13px; color: var(--text); display: flex; flex-direction: column; gap: 2px; }
+.id-set-label { font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.id-set-variant { font-family: var(--code); font-size: 10.5px; color: var(--text-muted); margin-bottom: 8px; }
+.id-set-variant code { color: var(--accent); background: transparent; }
 .id-set-stats {
   font-family: var(--code); font-size: 10.5px;
   color: var(--text-muted);
