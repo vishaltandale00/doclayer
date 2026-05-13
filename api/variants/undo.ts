@@ -4,18 +4,25 @@
  * Undo a previously-applied patch within a 60s window (spec section h).
  * Inverse synthesis from the patch's captured `test` values.
  *
+ * Storage: Neon (Vercel Postgres) via lib/db.ts. App-level ownership checks
+ * replace Supabase RLS. The full undo (version row + patch status flip +
+ * superseded-restoration + audit) runs in a single transaction.
+ *
  * Body: { patch_id: string }
  *
  * Error codes:
  *   401 unauthorized
  *   403 forbidden
  *   404 not found
- *   410 GONE                 — beyond 60s window
+ *   409 VERSION_FORK_DETECTED — concurrent write lost the version race
+ *   410 GONE                 — beyond 60s window, or already-undone patch
+ *   412 PRECONDITION_FAILED  — inverse-apply test op failed against current doc
  *   500 server error
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getServiceClient, getUserFromAuthHeader } from '../../lib/supabase-server.ts';
+import { requireAuth } from '../../lib/auth.ts';
+import { tx } from '../../lib/db.ts';
 import {
   type Op,
   type JsonValue,
@@ -66,135 +73,182 @@ export default async function handler(
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
   if (req.method !== 'POST') { res.status(405).json({ error: 'method_not_allowed' }); return; }
 
-  const user = await getUserFromAuthHeader(req.headers.authorization);
-  if (!user) { res.status(401).json({ error: 'unauthorized' }); return; }
+  const auth = await requireAuth(req);
+  if ('error' in auth) { res.status(auth.status).json({ error: auth.error }); return; }
 
   let raw: unknown = req.body;
-  if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch { res.status(400).json({ error: 'invalid_json' }); return; } }
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw); } catch { res.status(400).json({ error: 'invalid_json' }); return; }
+  }
   const body = (raw ?? {}) as { patch_id?: string };
-  if (typeof body.patch_id !== 'string') { res.status(400).json({ error: 'missing_patch_id' }); return; }
-
-  const supa = getServiceClient();
-  const { data: patch, error: pErr } = await supa
-    .from('patches')
-    .select('id, variant_id, spec, status, applied_at, superseded_by_id')
-    .eq('id', body.patch_id)
-    .single();
-  if (pErr || !patch) { res.status(404).json({ error: 'patch_not_found' }); return; }
-  if (!patch.applied_at || patch.status !== 'applied') {
-    res.status(410).json({ error: 'NOT_APPLIED' }); return;
-  }
-  const appliedAt = new Date(patch.applied_at as string).getTime();
-  if (Date.now() - appliedAt > UNDO_WINDOW_MS) {
-    res.status(410).json({ error: 'UNDO_WINDOW_EXPIRED', applied_at: patch.applied_at });
-    return;
+  if (typeof body.patch_id !== 'string') {
+    res.status(400).json({ error: 'missing_patch_id' }); return;
   }
 
-  // Variant ownership
-  const { data: variantRow } = await supa
-    .from('variants').select('id, user_id').eq('id', patch.variant_id).single();
-  if (!variantRow) { res.status(404).json({ error: 'variant_not_found' }); return; }
-  if (variantRow.user_id !== user.id) { res.status(403).json({ error: 'forbidden' }); return; }
-
-  // Load current doc.
-  const { data: latestVersion } = await supa
-    .from('variant_doc_versions')
-    .select('id, doc')
-    .eq('variant_id', patch.variant_id)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  let currentDoc: JsonValue = (latestVersion?.doc as JsonValue | undefined) ?? ({} as JsonValue);
-
-  // Inverse synthesis: replay against the CAPTURED expanded ops, not against
-  // the current doc. This is essential because the doc may have drifted —
-  // other patches may have applied in the 60s undo window. Re-expanding a
-  // macro against the live doc would produce inverse ops referencing the
-  // wrong state, silently corrupting the variant. Apply persisted the
-  // expanded ops in spec.effective_ops; we use those verbatim.
-  const spec = (patch.spec ?? {}) as { ops?: Op[]; effective_ops?: Op[] };
-  const forwardOps: Op[] = spec.effective_ops ?? spec.ops ?? [];
-  const priorTestByPath = new Map<string, JsonValue | undefined>();
-  for (const o of forwardOps) {
-    if (o.op === 'test') priorTestByPath.set(docPointer(o.path), o.value);
-  }
-
-  // Synthesize inverse ops (reversed order).
-  const inverseOps: Op[] = [];
-  for (let i = forwardOps.length - 1; i >= 0; i--) {
-    inverseOps.push(...inverseOp(forwardOps[i], priorTestByPath));
-  }
-
-  // Apply inverse ops to current doc.
-  let nextDoc: JsonValue = currentDoc;
   try {
-    for (const op of inverseOps) {
-      const docOp: Op = { ...op, path: docPointer(op.path) };
-      nextDoc = applyOp(nextDoc, docOp);
-    }
-  } catch (e) {
-    if (e instanceof TestFailedError) {
-      res.status(412).json({ error: 'PRECONDITION_FAILED', path: e.path, expected: e.expected, actual: e.actual });
+    const result = await tx(async (client) => {
+      // 1. Load the patch + join the owning variant for the ownership check.
+      const patchRes = await client.query<{
+        id: string;
+        variant_id: string;
+        spec: { ops?: Op[]; effective_ops?: Op[] };
+        status: string;
+        applied_at: string | null;
+        schema_fp: string;
+        owner_user_id: string;
+      }>(
+        `select p.id, p.variant_id, p.spec, p.status, p.applied_at, p.schema_fp,
+                v.user_id as owner_user_id
+         from patches p
+         join variants v on v.id = p.variant_id
+         where p.id = $1`,
+        [body.patch_id],
+      );
+      if (patchRes.rowCount === 0) {
+        return { kind: 'err' as const, status: 404, body: { error: 'patch_not_found' } };
+      }
+      const patch = patchRes.rows[0];
+      if (patch.owner_user_id !== auth.user_id) {
+        return { kind: 'err' as const, status: 403, body: { error: 'forbidden' } };
+      }
+      if (!patch.applied_at || patch.status !== 'applied') {
+        return { kind: 'err' as const, status: 410, body: { error: 'NOT_APPLIED' } };
+      }
+      const appliedAt = new Date(patch.applied_at).getTime();
+      if (Date.now() - appliedAt > UNDO_WINDOW_MS) {
+        return {
+          kind: 'err' as const, status: 410,
+          body: { error: 'UNDO_WINDOW_EXPIRED', applied_at: patch.applied_at },
+        };
+      }
+
+      // 2. Latest version row → currentDoc + prior_version_id for optimistic lock.
+      const latestRes = await client.query<{ id: string; doc: JsonValue }>(
+        `select id, doc from variant_doc_versions
+         where variant_id = $1
+         order by created_at desc
+         limit 1`,
+        [patch.variant_id],
+      );
+      const latestVersion = latestRes.rows[0] ?? null;
+      const currentDoc: JsonValue =
+        (latestVersion?.doc as JsonValue | undefined) ?? ({} as JsonValue);
+
+      // 3. Inverse synthesis: replay against the CAPTURED expanded ops, not
+      //    against the current doc. The doc may have drifted within the 60s
+      //    window. Re-expanding a macro against the live doc would produce
+      //    inverse ops referencing the wrong state, silently corrupting the
+      //    variant. apply.ts persisted the expanded ops in spec.effective_ops;
+      //    we use those verbatim.
+      const spec = patch.spec ?? {};
+      const forwardOps: Op[] = spec.effective_ops ?? spec.ops ?? [];
+      const priorTestByPath = new Map<string, JsonValue | undefined>();
+      for (const o of forwardOps) {
+        if (o.op === 'test') priorTestByPath.set(docPointer(o.path), o.value);
+      }
+      const inverseOps: Op[] = [];
+      for (let i = forwardOps.length - 1; i >= 0; i--) {
+        inverseOps.push(...inverseOp(forwardOps[i], priorTestByPath));
+      }
+
+      // 4. Apply inverse ops to currentDoc to compute the restored state.
+      let nextDoc: JsonValue = currentDoc;
+      try {
+        for (const op of inverseOps) {
+          const docOp: Op = { ...op, path: docPointer(op.path) };
+          nextDoc = applyOp(nextDoc, docOp);
+        }
+      } catch (e) {
+        if (e instanceof TestFailedError) {
+          return {
+            kind: 'err' as const, status: 412,
+            body: {
+              error: 'PRECONDITION_FAILED',
+              path: e.path, expected: e.expected, actual: e.actual,
+            },
+          };
+        }
+        return {
+          kind: 'err' as const, status: 422,
+          body: { error: 'undo_apply_failed', reason: (e as Error).message },
+        };
+      }
+
+      // 5. Insert the post-undo version row. The unique
+      //    (variant_id, prior_version_id) constraint is our optimistic lock.
+      const versionRes = await client.query<{ id: string }>(
+        `insert into variant_doc_versions
+           (variant_id, doc, schema_fp, patch_id, prior_version_id)
+         values ($1, $2::jsonb, $3, $4, $5)
+         returning id`,
+        [
+          patch.variant_id,
+          JSON.stringify(nextDoc),
+          patch.schema_fp,
+          patch.id,
+          latestVersion?.id ?? null,
+        ],
+      );
+      const versionId = versionRes.rows[0].id;
+
+      // 6. Flip the original patch to 'undone'. The immutability trigger
+      //    permits status changes.
+      await client.query(
+        `update patches set status = 'undone' where id = $1`,
+        [patch.id],
+      );
+
+      // 7. Restore any patches this one had superseded — flip them back to
+      //    applied. Their original applied_at remains; we deliberately do
+      //    NOT extend their undo window.
+      const restoredRes = await client.query<{ id: string }>(
+        `update patches
+           set superseded_by_id = null,
+               status = 'applied'
+         where superseded_by_id = $1
+         returning id`,
+        [patch.id],
+      );
+      const restoredIds = restoredRes.rows.map((r) => r.id);
+
+      // 8. Audit.
+      await client.query(
+        `insert into variant_patches_audit
+           (variant_id, patch_id, user_id, action, detail)
+         values ($1, $2, $3, 'undone', $4::jsonb)`,
+        [
+          patch.variant_id,
+          patch.id,
+          auth.user_id,
+          JSON.stringify({ restored_patch_ids: restoredIds }),
+        ],
+      );
+
+      return {
+        kind: 'ok' as const,
+        body: {
+          version_id: versionId,
+          restored_patch_ids: restoredIds,
+          doc: nextDoc,
+        },
+      };
+    });
+
+    if (result.kind === 'err') {
+      res.status(result.status).json(result.body);
       return;
     }
-    res.status(422).json({ error: 'undo_apply_failed', reason: (e as Error).message }); return;
-  }
-
-  // Persist: new version row, flip patch to rejected, restore any superseded.
-  const versionInsert = await supa
-    .from('variant_doc_versions')
-    .insert({
-      variant_id: patch.variant_id,
-      doc: nextDoc,
-      schema_fp: (patch as { schema_fp?: string }).schema_fp ?? '',
-      patch_id: patch.id,
-      prior_version_id: latestVersion?.id ?? null,
-    })
-    .select('id')
-    .single();
-  if (versionInsert.error || !versionInsert.data) {
-    const code = (versionInsert.error as { code?: string } | null)?.code;
-    if (code === '23505') {
+    res.status(200).json(result.body);
+  } catch (e) {
+    const pgErr = e as { code?: string; message?: string };
+    if (pgErr.code === '23505') {
       res.status(409).json({
         error: 'VERSION_FORK_DETECTED',
         message: 'variant has advanced since undo started — refresh and retry',
       });
       return;
     }
-    res.status(500).json({ error: 'db_version_insert', detail: versionInsert.error?.message });
-    return;
+    console.error('[doclayer] undo tx failed', pgErr);
+    res.status(500).json({ error: 'db_error', detail: pgErr.message });
   }
-  const versionId = versionInsert.data.id as string;
-
-  await supa.from('patches').update({ status: 'rejected' }).eq('id', patch.id);
-
-  // Restore any patches this one had superseded.
-  const { data: restored } = await supa
-    .from('patches')
-    .select('id')
-    .eq('superseded_by_id', patch.id);
-  const restoredIds = ((restored ?? []) as Array<{ id: string }>).map((r) => r.id);
-  if (restoredIds.length > 0) {
-    await supa
-      .from('patches')
-      .update({ superseded_by_id: null, status: 'applied' })
-      .in('id', restoredIds);
-  }
-
-  await supa.from('variant_patches_audit').insert({
-    variant_id: patch.variant_id,
-    patch_id: patch.id,
-    user_id: user.id,
-    action: 'undone',
-    detail: { restored_patch_ids: restoredIds },
-  });
-
-  // Return the post-undo doc so the client can canonical-replay against
-  // :root rather than synthesizing inverse ops locally (which silently
-  // no-ops on macro-only patches). See fix: undo-macro-revert-desync.
-  res.status(200).json({
-    version_id: versionId,
-    restored_patch_ids: restoredIds,
-    doc: nextDoc,
-  });
 }

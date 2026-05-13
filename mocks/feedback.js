@@ -17,8 +17,25 @@
   var STORAGE_KEY = 'doclayer-feedback-' + SCENARIO;
   var QUEUE_KEY = 'doclayer-feedback-queue-' + SCENARIO;
   var API_URL = '/api/draft-feedback';
+  var PERSIST_URL = '/api/comments/post';
   var CANNED_URL = 'feedback-canned.json';
   var REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---- Auth: fetch the current Supabase JWT (null if anonymous).
+  // Identity layer owns the supabase client; we just borrow getSession().
+  function getJwt() {
+    var supa = (window.doclayerIdentity && window.doclayerIdentity.getSupabase)
+      ? window.doclayerIdentity.getSupabase() : null;
+    if (!supa) return Promise.resolve(null);
+    return supa.auth.getSession().then(function (r) {
+      return (r && r.data && r.data.session && r.data.session.access_token) || null;
+    }).catch(function () { return null; });
+  }
+  function authHeaders(jwt) {
+    var h = { 'Content-Type': 'application/json' };
+    if (jwt) h['Authorization'] = 'Bearer ' + jwt;
+    return h;
+  }
 
   // ---- DOM ----
   var trigger    = document.getElementById('fbTrigger');
@@ -283,6 +300,45 @@
     if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
   }
 
+  // Surface a non-blocking inline notice. The architect call still runs;
+  // this is just a hint that the comment didn't persist server-side. Uses
+  // the existing #fbError container but doesn't suspend the submit flow.
+  function showInlineNotice(msg, ctaLabel, ctaFn) {
+    err.classList.add('on');
+    errMsg.textContent = msg;
+    if (ctaLabel && ctaFn) {
+      retryBtn.style.display = '';
+      retryBtn.textContent = ctaLabel;
+      retryBtn.onclick = function () {
+        retryBtn.onclick = null;
+        retryBtn.textContent = 'retry';
+        ctaFn();
+      };
+    } else {
+      retryBtn.style.display = 'none';
+    }
+  }
+
+  // POST /api/comments/post. Returns { status, body } envelope; never throws.
+  function persistComment(payload, jwt) {
+    return fetch(PERSIST_URL, {
+      method: 'POST',
+      headers: authHeaders(jwt),
+      body: JSON.stringify({
+        scenario: payload.scenario,
+        phase: payload.phase || undefined,
+        feedback: payload.feedback,
+        // No anchor in the global-widget flow; comments.js sends one.
+      }),
+    }).then(function (res) {
+      return res.json().then(function (j) { return { status: res.status, body: j, headers: res.headers }; },
+                            function () { return { status: res.status, body: {}, headers: res.headers }; });
+    }).catch(function () {
+      // Network/5xx fall-through. Caller treats as "skip persistence".
+      return { status: 0, body: {}, headers: null };
+    });
+  }
+
   function doSubmit() {
     var feedback = text.value.trim();
     if (feedback.length < 3) return;
@@ -297,10 +353,78 @@
     fireGutterParticle();
 
     var started = Date.now();
-    fetch(API_URL, {
+
+    // ---- Persistence-first flow ----
+    // Step 1: hit /api/comments/post so the comment lands in the DB.
+    // Step 2: hit /api/draft-feedback with the comment_id so the architect
+    //         response is attached onto that same row.
+    // The 401/429/422 paths short-circuit the persistence half but still
+    // call the architect with NO comment_id, so the user gets a response
+    // (just unpersisted). 5xx/network → fall through silently to the
+    // unpersisted architect call (existing canned-fallback path covers it).
+    getJwt().then(function (jwt) {
+      if (!jwt) {
+        // Anonymous: skip persistence; show inline sign-in CTA.
+        showInlineNotice("sign in to save your feedback to the timeline", "sign in", function () {
+          if (window.doclayerIdentity && typeof window.doclayerIdentity.openModal === 'function') {
+            window.doclayerIdentity.openModal({});
+          } else if (window.doclayerEnsureIdentity) {
+            window.doclayerEnsureIdentity();
+          }
+        });
+        return runArchitect(null, jwt, started);
+      }
+      return persistComment(lastPayload, jwt).then(function (p) {
+        if (p.status >= 200 && p.status < 300 && p.body && p.body.comment_id) {
+          // Clear any prior inline notice from a previous attempt.
+          err.classList.remove('on');
+          return runArchitect(p.body.comment_id, jwt, started);
+        }
+        if (p.status === 401) {
+          showInlineNotice("session expired — sign in to save your feedback", "sign in", function () {
+            if (window.doclayerIdentity && typeof window.doclayerIdentity.openModal === 'function') {
+              window.doclayerIdentity.openModal({});
+            }
+          });
+          return runArchitect(null, jwt, started);
+        }
+        if (p.status === 429) {
+          var retryAfter = 60;
+          try {
+            if (p.headers && typeof p.headers.get === 'function') {
+              var ra = p.headers.get('Retry-After');
+              if (ra) retryAfter = Math.max(1, parseInt(ra, 10) || 60);
+            }
+            if (p.body && typeof p.body.retry_after_seconds === 'number') {
+              retryAfter = Math.max(1, p.body.retry_after_seconds);
+            }
+          } catch (e) {}
+          // Mirror the existing 429 affordance: surface the countdown in #fbError.
+          endDrafting();
+          setSubmitting(true);
+          err.classList.add('on');
+          startCountdown(retryAfter);
+          errMsg.textContent = "you've left a lot of feedback recently — try again in " + retryAfter + "s";
+          return; // Skip architect entirely on rate-limit.
+        }
+        if (p.status === 422) {
+          var detail = (p.body && (p.body.detail || p.body.error)) || 'validation error';
+          showInlineNotice("couldn't save: " + detail, null, null);
+          return runArchitect(null, jwt, started);
+        }
+        // 5xx / 0 (network) — fall through to architect call without persistence.
+        return runArchitect(null, jwt, started);
+      });
+    });
+  }
+
+  function runArchitect(commentId, jwt, started) {
+    var body = { scenario: lastPayload.scenario, phase: lastPayload.phase, feedback: lastPayload.feedback };
+    if (commentId) body.comment_id = commentId;
+    return fetch(API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(lastPayload),
+      headers: authHeaders(jwt),
+      body: JSON.stringify(body),
     }).then(function (res) {
       return res.json().then(function (j) { return { status: res.status, body: j }; },
                             function () { return { status: res.status, body: {} }; });

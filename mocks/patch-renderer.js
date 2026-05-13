@@ -181,55 +181,84 @@
     });
   }
 
+  // Resolve the current Supabase JWT (null when anonymous). All API calls
+  // pipe through this so we attach Authorization on every request.
+  function getJwt() {
+    var supa = window.doclayerIdentity && window.doclayerIdentity.getSupabase
+      ? window.doclayerIdentity.getSupabase() : null;
+    if (!supa) return Promise.resolve(null);
+    return supa.auth.getSession().then(function (r) {
+      return (r && r.data && r.data.session && r.data.session.access_token) || null;
+    }).catch(function () { return null; });
+  }
+
   // ---- Initial fetch + replay ----
   function fetchAndReplay() {
     // Always ensure the registry is loaded — even for anonymous viewers, so
     // that any post-signin live-apply has the mapping available.
     var regP = loadCssVarRegistry();
     if (!window.doclayerIdentity) return regP;
-    var supa = window.doclayerIdentity.getSupabase && window.doclayerIdentity.getSupabase();
     // Cross-variant browse: prefer the URL-provided variant. Otherwise use the
     // signed-in user's variant.
     var variantId = BROWSE_VARIANT_ID
       || (window.doclayerIdentity.getVariantId && window.doclayerIdentity.getVariantId());
-    if (!supa || !variantId) {
-      // Still install the banner if a variant is requested but supabase is unavailable —
-      // makes the read-only intent obvious even when fetches fail.
+    if (!variantId) {
       if (BROWSE_VARIANT_ID) installBrowseBanner(BROWSE_VARIANT_ID, null);
       return regP;
     }
 
-    return regP.then(function () {
-      if (BROWSE_VARIANT_ID) {
-        // Look up the owner's email-ish label for the banner. With no exposed
-        // auth.users join we fall back to a slice of user_id.
-        return supa.from('variants').select('id, user_id, name').eq('id', BROWSE_VARIANT_ID).maybeSingle()
-          .then(function (vr) {
-            var label = vr && vr.data ? ('viewer-' + String(vr.data.user_id).slice(0, 6)) : BROWSE_VARIANT_ID.slice(0, 8);
-            // If it's the current user's own variant, use their email.
-            var me = window.doclayerIdentity.get && window.doclayerIdentity.get();
-            if (me && me.email && vr && vr.data && me.userId === vr.data.user_id) label = me.email;
-            browseVariantMeta = { id: BROWSE_VARIANT_ID, email: label };
-            installBrowseBanner(BROWSE_VARIANT_ID, label);
-            return null;
-          });
+    return regP.then(function () { return getJwt(); }).then(function (jwt) {
+      if (!jwt) {
+        if (BROWSE_VARIANT_ID) installBrowseBanner(BROWSE_VARIANT_ID, null);
+        return null;
       }
-      return null;
-    }).then(function () {
-      return supa.from('patches')
-        .select('id, spec, status, applied_at, superseded_by_id, scenario_id')
-        .eq('variant_id', variantId)
-        .eq('scenario_id', SCENARIO)
-        .eq('status', 'applied')
-        .order('applied_at', { ascending: true });
-    }).then(function (res) {
-      if (!res) return;
-      if (res.error) { console.warn('[doclayer-patch] fetch failed', res.error); return; }
+      var authHdr = { 'Authorization': 'Bearer ' + jwt };
+
+      // Resolve the browse banner label via /api/variants/public?id=<id>.
+      // Single-variant lookup form returns just that row. Falls back to a
+      // user_id slug if the variant is non-public (404) or the call fails.
+      var bannerP = Promise.resolve();
+      if (BROWSE_VARIANT_ID) {
+        bannerP = fetch('/api/variants/public?id=' + encodeURIComponent(BROWSE_VARIANT_ID), {
+          headers: authHdr,
+        }).then(function (res) {
+          return res.ok ? res.json() : null;
+        }).then(function (data) {
+          var row = data && Array.isArray(data.variants) && data.variants[0];
+          var label = row
+            ? (row.email_handle || ('viewer-' + String(row.user_id).slice(0, 6)))
+            : BROWSE_VARIANT_ID.slice(0, 8);
+          // If it's the current user's own variant, prefer their full email.
+          var me = window.doclayerIdentity.get && window.doclayerIdentity.get();
+          if (me && me.email && row && me.userId === row.user_id) label = me.email;
+          browseVariantMeta = { id: BROWSE_VARIANT_ID, email: label };
+          installBrowseBanner(BROWSE_VARIANT_ID, label);
+        }).catch(function () {
+          installBrowseBanner(BROWSE_VARIANT_ID, null);
+        });
+      }
+
+      return bannerP.then(function () {
+        var url = '/api/variants/patches?variant_id=' + encodeURIComponent(variantId)
+                + '&scenario_id=' + encodeURIComponent(SCENARIO)
+                + '&status=applied';
+        return fetch(url, { headers: authHdr }).then(function (res) {
+          if (!res.ok) {
+            return res.json().catch(function () { return {}; }).then(function (j) {
+              console.warn('[doclayer-patch] fetch failed', res.status, j);
+              return { patches: [] };
+            });
+          }
+          return res.json();
+        });
+      });
+    }).then(function (data) {
+      if (!data) return;
       // Wipe local registries: this is a canonical replay.
       appliedPatches.clear();
       pathHistory.clear();
       resetCssVarsToDefaults();
-      var rows = res.data || [];
+      var rows = Array.isArray(data.patches) ? data.patches : [];
       rows.forEach(function (row) {
         trackPatch(row);
         var ops = (row.spec && row.spec.effective_ops && row.spec.effective_ops.length)

@@ -3,6 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import variantSchema from "../lib/variant-schema.json" with { type: "json" };
 import { schemaFingerprint } from "../lib/schema-fp.ts";
 import { enumerateAllowlist, isPathAllowed } from "../lib/allowlist.ts";
+import { requireAuth } from "../lib/auth.ts";
+import { sql } from "../lib/db.ts";
 
 // ---- Types (inlined; no shared types yet) ----
 
@@ -15,6 +17,13 @@ interface DraftRequest {
   /** Deprecated: ignored. Kept for backward compat with older clients. */
   role?: string;
   feedback: string;
+  /**
+   * If present, the architect response will be UPDATEd onto this comment row
+   * (kind='feedback') after the model call. Created upstream by POST
+   * /api/comments/post. Omitting it is fine — the endpoint still returns the
+   * response; it just won't persist the architect_response field.
+   */
+  comment_id?: string;
 }
 
 interface PatchOp {
@@ -419,6 +428,15 @@ export default async function handler(
     return;
   }
 
+  // Require auth — matches the other refactored endpoints. The architect call
+  // is gated on a real Supabase session so we can audit who triggered it and
+  // safely UPDATE the user's comment row with the response.
+  const auth = await requireAuth(req);
+  if ('error' in auth) {
+    res.status(auth.status).json({ error: auth.error } satisfies ErrorBody);
+    return;
+  }
+
   // Parse body (Vercel auto-parses JSON when content-type is application/json)
   let raw: unknown = req.body;
   if (typeof raw === "string") {
@@ -462,6 +480,13 @@ export default async function handler(
     res.status(400).json({ error: "Invalid phase" } satisfies ErrorBody);
     return;
   }
+  if (body.comment_id !== undefined && typeof body.comment_id !== "string") {
+    res.status(400).json({ error: "Invalid comment_id" } satisfies ErrorBody);
+    return;
+  }
+  const commentId: string | null = typeof body.comment_id === "string" && body.comment_id.length > 0
+    ? body.comment_id
+    : null;
 
   // Rate limit
   const ip = getIp(req);
@@ -587,6 +612,33 @@ export default async function handler(
     };
     const quoted = extractQuotedPhrase(feedback);
     if (quoted) result.quotedPhrase = quoted;
+
+    // Persist the architect response onto the existing comment row, if the
+    // client posted to /api/comments/post first and forwarded the comment_id.
+    // We scope the UPDATE to the caller's user_id so a malicious request can't
+    // overwrite someone else's comment by guessing its id. Fire-and-forget:
+    // we still return the response even if the UPDATE fails — the response
+    // itself is already useful client-side, and a missing routed_kind on the
+    // row is recoverable on next interaction.
+    if (commentId) {
+      try {
+        await sql(
+          `update comments
+              set architect_response = $1,
+                  routed_kind = $2
+            where id = $3
+              and user_id = $4
+              and kind = 'feedback'`,
+          [prose, kind, commentId, auth.user_id]
+        );
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[draft-feedback] failed to persist architect_response', {
+          comment_id: commentId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
 
     res.status(200).json(result);
   } catch (err) {

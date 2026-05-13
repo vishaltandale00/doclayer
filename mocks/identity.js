@@ -93,50 +93,53 @@
     var email = session.user.email || '';
     var color = colorFor(email);
     var avatar = avatarFor(email);
-    // Look up the user's main variant. Trigger should have auto-created it.
-    return supa.from('variants')
-      .select('id, name')
-      .eq('user_id', session.user.id)
-      .eq('name', 'main')
-      .maybeSingle()
-      .then(function (res) {
-        var variantId = res && res.data ? res.data.id : null;
-        if (!variantId) {
-          // Trigger may not have fired (edge case) — create one. This is a
-          // DEFENSE-IN-DEPTH path, NOT an expected branch. If we get here in
-          // prod it means the on_auth_user_created trigger silently broke or
-          // was never installed. Loud-warn AND emit a custom event so dashboards
-          // / monitoring can pick it up; flip a sticky session flag so the gear
-          // panel renders a "⚠ degraded mode" pill.
-          console.warn('[doclayer] DB trigger did not auto-create main variant; falling back to client insert. This is a prod signal.');
-          triggerFallbackFired = true;
-          try {
-            window.dispatchEvent(new CustomEvent('doclayer:trigger-fallback', {
-              detail: { userId: session.user.id, attemptedAt: new Date().toISOString() },
-            }));
-          } catch (e) { /* swallow */ }
-          return supa.from('variants')
-            .insert({ user_id: session.user.id, name: 'main', is_public: true })
-            .select('id')
-            .single()
-            .then(function (ins) {
-              currentVariantId = ins && ins.data ? ins.data.id : null;
-              return {
-                email: email, handle: email, color: color, avatar: avatar,
-                variantId: currentVariantId, userId: session.user.id,
-              };
-            });
-        }
-        currentVariantId = variantId;
-        return {
-          email: email, handle: email, color: color, avatar: avatar,
-          variantId: variantId, userId: session.user.id,
-        };
-      })
-      .catch(function (err) {
-        console.warn('[doclayer] variant lookup failed', err);
-        return { email: email, handle: email, color: color, avatar: avatar, variantId: null, userId: session.user.id };
-      });
+    // Look up (and idempotently provision) the user's main variant via the
+    // server. requireAuth() on /api/me handles the create-on-first-call
+    // logic that the old DB trigger used to do — no more direct Neon access
+    // from the client. Falls back to a no-variant identity if the call
+    // fails, so the UI still renders.
+    var jwt = session && session.access_token;
+    return fetch('/api/me', {
+      method: 'GET',
+      headers: jwt ? { 'Authorization': 'Bearer ' + jwt } : {},
+    }).then(function (res) {
+      return res.json().then(function (j) { return { status: res.status, body: j }; },
+                            function () { return { status: res.status, body: {} }; });
+    }).then(function (out) {
+      var variantId = (out.status >= 200 && out.status < 300 && out.body && out.body.variant_id) || null;
+      if (!variantId) {
+        // /api/me failed — surface degraded mode (mirrors the old trigger-
+        // fallback signal). Real prod path is the server returning a valid
+        // variant_id; we land here only on network errors or a misconfigured
+        // backend.
+        console.warn('[doclayer] /api/me did not return a variant_id; rendering in degraded mode', out);
+        triggerFallbackFired = true;
+        try {
+          window.dispatchEvent(new CustomEvent('doclayer:trigger-fallback', {
+            detail: { userId: session.user.id, attemptedAt: new Date().toISOString() },
+          }));
+        } catch (e) { /* swallow */ }
+      }
+      currentVariantId = variantId;
+      return {
+        email: email, handle: email, color: color, avatar: avatar,
+        variantId: variantId, userId: session.user.id,
+      };
+    }).catch(function (err) {
+      console.warn('[doclayer] /api/me lookup failed', err);
+      return { email: email, handle: email, color: color, avatar: avatar, variantId: null, userId: session.user.id };
+    });
+  }
+
+  // -------- auth header helper (Neon API calls) ---------------
+  // Resolves the current Supabase JWT. Returns null when anonymous or when
+  // the supabase client failed to initialize. All authed API calls go
+  // through here so we have one place to fix if the token shape changes.
+  function getJwt() {
+    if (!supa) return Promise.resolve(null);
+    return supa.auth.getSession().then(function (r) {
+      return (r && r.data && r.data.session && r.data.session.access_token) || null;
+    }).catch(function () { return null; });
   }
 
   // -------- storage helpers (local fallback) ------------------
@@ -440,12 +443,25 @@
   }
 
   // -------- delete-variant (auth mode) ------------------------
+  // Hits DELETE /api/me/variant. The server filters by user_id so we can't
+  // accidentally drop a row that isn't ours even with a stale session.
   function deleteMyVariant() {
     if (!supa || !currentIdentity || !currentIdentity.variantId) return Promise.resolve(false);
-    return supa.from('variants').delete().eq('id', currentIdentity.variantId).then(function (res) {
-      if (res.error) { console.warn('[doclayer] delete variant failed', res.error); return false; }
+    return getJwt().then(function (jwt) {
+      return fetch('/api/me/variant', {
+        method: 'DELETE',
+        headers: jwt ? { 'Authorization': 'Bearer ' + jwt } : {},
+      });
+    }).then(function (res) {
+      if (!res.ok && res.status !== 204) {
+        console.warn('[doclayer] delete variant failed', res.status);
+        return false;
+      }
       // Cascade kills comments/patches/versions. Sign out after.
       return doSignOut().then(function () { return true; });
+    }).catch(function (err) {
+      console.warn('[doclayer] delete variant threw', err);
+      return false;
     });
   }
 
@@ -722,16 +738,24 @@
   function refreshPatchesSummary() {
     var el = document.querySelector('[data-patches-summary]');
     if (!el || !supa || !currentIdentity || !currentIdentity.variantId) return;
-    // Count-only queries — head:true with exact count avoids loading spec payloads.
-    function countByStatus(status) {
-      return supa.from('patches')
-        .select('id', { count: 'exact', head: true })
-        .eq('variant_id', currentIdentity.variantId)
-        .eq('status', status);
-    }
-    Promise.all([countByStatus('applied'), countByStatus('superseded')]).then(function (rs) {
-      var applied = (rs[0] && typeof rs[0].count === 'number') ? rs[0].count : 0;
-      var superseded = (rs[1] && typeof rs[1].count === 'number') ? rs[1].count : 0;
+    // The old code issued two count-only Supabase queries. We now fetch a
+    // page of patches from /api/me/patches and tally locally. For variants
+    // with >50 patches this under-counts; the modal still shows the full
+    // paginated list when opened. Acceptable trade-off for V1 to avoid a
+    // dedicated /count endpoint.
+    getJwt().then(function (jwt) {
+      if (!jwt) return null;
+      return fetch('/api/me/patches?limit=50', {
+        headers: { 'Authorization': 'Bearer ' + jwt },
+      }).then(function (res) { return res.ok ? res.json() : null; });
+    }).then(function (data) {
+      if (!data || !Array.isArray(data.patches)) return;
+      var applied = 0;
+      var superseded = 0;
+      data.patches.forEach(function (p) {
+        if (p.status === 'applied') applied++;
+        else if (p.status === 'superseded') superseded++;
+      });
       var a = el.querySelector('[data-patches-applied]');
       var s = el.querySelector('[data-patches-superseded]');
       if (a) a.textContent = String(applied);
@@ -797,109 +821,84 @@
       return;
     }
 
-    // State: accumulated rows by id (so we can resolve superseded_by → row);
-    // patchCursor / revCursor advance independently so pagination works
-    // across both axes (P1-2 fix). Each is the oldest timestamp we've seen
-    // in its stream. exhausted flips only when BOTH streams report drained.
+    // State: accumulated rows by id (so we can resolve superseded_by → row).
+    // We hit GET /api/me/patches?cursor=<ts> which returns BOTH patches and
+    // accepted revision-variants in one roundtrip plus a unified next_cursor.
+    // Server-side filter is by the auth'd user's variant_id; no client-side
+    // variant filtering needed.
     var allRows = [];
     var rowById = {};
-    var patchCursor = null;     // applied_at string; null = no cursor (fetch newest)
-    var revCursor = null;       // created_at string; null = no cursor
-    var patchesExhausted = false;
-    var revisionsExhausted = false;
+    var nextCursor = null;       // server-issued cursor for the next page
+    var exhausted = false;
     var loading = false;
 
     function fetchPage() {
-      if (loading || (patchesExhausted && revisionsExhausted)) return Promise.resolve();
+      if (loading || exhausted) return Promise.resolve();
       loading = true;
 
-      // Patches: applied-only, paginated by applied_at.
-      var qPatches = patchesExhausted
-        ? Promise.resolve({ data: [], error: null })
-        : (function () {
-            var q = supa.from('patches')
-              .select('id, scenario_id, spec, status, applied_at, superseded_by_id')
-              .eq('variant_id', currentIdentity.variantId)
-              .order('applied_at', { ascending: false })
-              .limit(PATCHES_PAGE_SIZE);
-            if (patchCursor) q = q.lt('applied_at', patchCursor);
-            return q;
-          })();
-
-      // Revision-variants: ACCEPTED only (P0-3 fix #2 / P1-1). Owner timeline
-      // shows owner-actioned events; pending proposals from third parties
-      // belong in an inbox view, not "your patches". Paginated by created_at.
-      var qRev = revisionsExhausted
-        ? Promise.resolve({ data: [], error: null })
-        : (function () {
-            var q = supa.from('comments')
-              .select('id, scenario_id, text, target_block_id, proposed_text, revision_status, created_at')
-              .eq('variant_id', currentIdentity.variantId)
-              .eq('kind', 'revision_variant')
-              .eq('revision_status', 'accepted')
-              .order('created_at', { ascending: false })
-              .limit(PATCHES_PAGE_SIZE);
-            if (revCursor) q = q.lt('created_at', revCursor);
-            return q;
-          })();
-
-      return Promise.all([qPatches, qRev]).then(function (results) {
-        var res = results[0];
-        var revRes = results[1];
-        loading = false;
-        if (res.error && revRes.error) {
+      return getJwt().then(function (jwt) {
+        if (!jwt) {
+          loading = false;
           wrap.querySelector('.id-patches-body').innerHTML =
-            '<div class="id-patches-empty">couldn\'t load.</div>';
+            '<div class="id-patches-empty">sign in to track patches across scenarios.</div>';
           return;
         }
-        var rows = (res && !res.error && Array.isArray(res.data)) ? res.data : [];
-        if (!patchesExhausted) {
-          if (rows.length < PATCHES_PAGE_SIZE) patchesExhausted = true;
-          if (rows.length) {
-            rows.forEach(function (r) {
-              if (!rowById[r.id]) { rowById[r.id] = r; allRows.push(r); }
+        var url = '/api/me/patches?limit=' + PATCHES_PAGE_SIZE +
+                  (nextCursor ? '&cursor=' + encodeURIComponent(nextCursor) : '');
+        return fetch(url, {
+          headers: { 'Authorization': 'Bearer ' + jwt },
+        }).then(function (res) {
+          if (!res.ok) {
+            return res.json().catch(function () { return {}; }).then(function (j) {
+              throw new Error((j && j.error) || ('http_' + res.status));
             });
-            patchCursor = rows[rows.length - 1].applied_at;
           }
-        }
-        // Fold revision-variants into the same allRows array using a
-        // discriminator so renderList can pick the right icon/label.
-        var revRows = (revRes && !revRes.error && Array.isArray(revRes.data)) ? revRes.data : [];
-        if (!revisionsExhausted) {
-          if (revRows.length < PATCHES_PAGE_SIZE) revisionsExhausted = true;
-          if (revRows.length) {
-            revRows.forEach(function (r) {
-              var key = 'rv:' + r.id;
-              if (rowById[key]) return;
-              var row = {
-                id: key,
-                scenario_id: r.scenario_id,
-                spec: { intent: r.text || 'rewrite proposed' },
-                status: r.revision_status === 'accepted' ? 'rev-accepted' : 'rev-proposed',
-                applied_at: r.created_at,
-                superseded_by_id: null,
-                __kind: 'revision_variant',
-                __target_block_id: r.target_block_id,
-                __proposed_text: r.proposed_text,
-              };
-              rowById[key] = row;
-              allRows.push(row);
-            });
-            revCursor = revRows[revRows.length - 1].created_at;
-          }
-        }
-        // Sort merged result newest-first so the unified timeline is monotone
-        // across pagination calls.
-        allRows.sort(function (a, b) {
-          var at = a.applied_at || '';
-          var bt = b.applied_at || '';
-          return at < bt ? 1 : at > bt ? -1 : 0;
+          return res.json();
+        }).then(function (data) {
+          loading = false;
+          var patches = Array.isArray(data && data.patches) ? data.patches : [];
+          var revisions = Array.isArray(data && data.revisions) ? data.revisions : [];
+
+          patches.forEach(function (r) {
+            if (rowById[r.id]) return;
+            rowById[r.id] = r;
+            allRows.push(r);
+          });
+          // Fold revisions into allRows with the discriminator the renderer
+          // expects (preserve the prior shape exactly so renderList is unchanged).
+          revisions.forEach(function (r) {
+            var key = 'rv:' + r.id;
+            if (rowById[key]) return;
+            var row = {
+              id: key,
+              scenario_id: r.scenario_id,
+              spec: { intent: r.text || 'rewrite proposed' },
+              status: r.revision_status === 'accepted' ? 'rev-accepted' : 'rev-proposed',
+              applied_at: r.created_at,
+              superseded_by_id: null,
+              __kind: 'revision_variant',
+              __target_block_id: r.target_block_id,
+              __proposed_text: r.proposed_text,
+            };
+            rowById[key] = row;
+            allRows.push(row);
+          });
+
+          // Sort newest-first across the merged timeline.
+          allRows.sort(function (a, b) {
+            var at = a.applied_at || '';
+            var bt = b.applied_at || '';
+            return at < bt ? 1 : at > bt ? -1 : 0;
+          });
+
+          nextCursor = (data && data.next_cursor) || null;
+          if (!nextCursor) exhausted = true;
+          renderList();
+        }).catch(function () {
+          loading = false;
+          wrap.querySelector('.id-patches-body').innerHTML =
+            '<div class="id-patches-empty">couldn\'t load.</div>';
         });
-        renderList();
-      }).catch(function () {
-        loading = false;
-        wrap.querySelector('.id-patches-body').innerHTML =
-          '<div class="id-patches-empty">couldn\'t load.</div>';
       });
     }
 
@@ -979,7 +978,7 @@
           }
         });
       });
-      foot.style.display = (patchesExhausted && revisionsExhausted) ? 'none' : 'flex';
+      foot.style.display = exhausted ? 'none' : 'flex';
     }
 
     function cssEscapeId(s) {

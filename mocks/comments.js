@@ -30,6 +30,18 @@
     return { handle: 'viewer', color: 'var(--third)' };
   }
 
+  // Fetch the current Supabase JWT (null when anonymous). The identity layer
+  // owns the supabase client; we just borrow getSession() here so every API
+  // call can attach `Authorization: Bearer <jwt>`.
+  function getJwt() {
+    var supa = (window.doclayerIdentity && window.doclayerIdentity.getSupabase)
+      ? window.doclayerIdentity.getSupabase() : null;
+    if (!supa) return Promise.resolve(null);
+    return supa.auth.getSession().then(function (r) {
+      return (r && r.data && r.data.session && r.data.session.access_token) || null;
+    }).catch(function () { return null; });
+  }
+
   // ---- State ----
   var paused = false;
   var pendingAnchor = null;       // { dot, bubble } before first submit
@@ -297,19 +309,70 @@
       };
       var started = Date.now();
 
-      fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }).then(function (res) {
-        return res.json().then(function (j) { return { status: res.status, body: j }; },
-                              function () { return { status: res.status, body: {} }; });
-      }).then(function (out) {
-        var minDelay = Math.max(0, 900 - (Date.now() - started));
-        setTimeout(function () { handle(out); }, minDelay);
-      }).catch(function () {
-        cannedFallback(text).then(function (resp) { complete(resp, true, null); })
-          .catch(function () { failure("couldn't reach architect — try again"); });
+      // Persistence-first: POST /api/comments/post (authed) to get a
+      // comment_id, then call /api/draft-feedback with that id so the
+      // architect response is attached to the persisted row. If the user
+      // is anonymous (no JWT) or the persist call fails non-fatally, we
+      // still attempt the architect call without a comment_id so they
+      // get a response (just not server-persisted).
+      getJwt().then(function (jwt) {
+        var headers = { 'Content-Type': 'application/json' };
+        if (jwt) headers['Authorization'] = 'Bearer ' + jwt;
+
+        function callArchitect(commentId) {
+          var body = {
+            scenario: payload.scenario,
+            phase: payload.phase,
+            feedback: payload.feedback,
+            anchor: payload.anchor,
+            viewer: payload.viewer,
+          };
+          if (commentId) body.comment_id = commentId;
+          return fetch(API_URL, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(body),
+          }).then(function (res) {
+            return res.json().then(function (j) { return { status: res.status, body: j }; },
+                                  function () { return { status: res.status, body: {} }; });
+          }).then(function (out) {
+            var minDelay = Math.max(0, 900 - (Date.now() - started));
+            setTimeout(function () { handle(out); }, minDelay);
+          }).catch(function () {
+            cannedFallback(text).then(function (resp) { complete(resp, true, null); })
+              .catch(function () { failure("couldn't reach architect — try again"); });
+          });
+        }
+
+        if (!jwt) {
+          // Anonymous: surface a quiet hint but proceed without persistence.
+          return callArchitect(null);
+        }
+        return fetch('/api/comments/post', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({
+            scenario: payload.scenario,
+            phase: payload.phase || undefined,
+            feedback: payload.feedback,
+            anchor: payload.anchor || undefined,
+          }),
+        }).then(function (res) {
+          return res.json().then(function (j) { return { status: res.status, body: j }; },
+                                function () { return { status: res.status, body: {} }; });
+        }).then(function (p) {
+          var commentId = (p && p.body && p.body.comment_id) || null;
+          // 429 short-circuits architect — caller is rate-limited.
+          if (p.status === 429) {
+            failure("you've left a lot of feedback recently — try again in a minute");
+            return;
+          }
+          // 401/422/5xx: still call architect, just without persistence.
+          return callArchitect(commentId);
+        }).catch(function () {
+          // Persist call threw — fall back to architect-only.
+          return callArchitect(null);
+        });
       });
 
       function handle(out) {

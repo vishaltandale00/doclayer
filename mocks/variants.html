@@ -129,6 +129,17 @@
     return window.doclayerIdentity && window.doclayerIdentity.getSupabase && window.doclayerIdentity.getSupabase();
   }
 
+  // Resolve the current Supabase JWT (null when anonymous). All /api/* calls
+  // attach `Authorization: Bearer <jwt>` since we moved data behind the new
+  // Neon-backed endpoints (Supabase is auth-only now).
+  function getJwt() {
+    var supa = getSupa();
+    if (!supa) return Promise.resolve(null);
+    return supa.auth.getSession().then(function (r) {
+      return (r && r.data && r.data.session && r.data.session.access_token) || null;
+    }).catch(function () { return null; });
+  }
+
   // ---- Canonical defaults loader ---------------------------------------
   // Walks lib/variant-schema.json (mirrored to mocks/variant-schema.json by
   // the build) and collects every leaf's `default` keyed by its full schema
@@ -227,68 +238,55 @@
   }
 
   // ---- Fetch ---------------------------------------------------------
-  // Two-step fetch:
-  //   1) variants_public_with_handle view (id, email_handle, last_active_at)
-  //      — handles the auth.users join via SECURITY DEFINER so we get a
-  //      humane handle instead of a slug of user_id.
-  //   2) patches per variant for counts, palette, scenario coverage.
-  // We support cursor pagination on last_active_at descending; the cursor
-  // is the oldest last_active_at currently in state.rows.
+  // Two-step fetch (Neon-backed, post-2026-05-13 split):
+  //   1) GET /api/variants/public — returns id, variant_name, email_handle,
+  //      user_id, last_active_at, created_at. email_handle is denormalized
+  //      on the variants row now, so no SECURITY DEFINER view needed.
+  //   2) POST /api/variants/patches-batch — one shot for all visible variants'
+  //      patch detail (counts, palette, scenario coverage).
+  // We support cursor pagination on last_active_at descending; the server
+  // emits next_cursor when more pages exist.
   function fetchVariants(opts) {
     if (state.loading) return;
     state.loading = true;
     opts = opts || {};
     var append = !!opts.append;
 
-    var supa = getSupa();
-    if (!supa) {
-      $('#vpGrid').innerHTML = '<div class="vp-empty">auth unavailable — variants live in supabase. running offline.</div>';
-      state.loading = false;
-      return;
-    }
-
     // Kick off the canonical-defaults fetch in parallel with the variant list
     // so the diff modal opens instantly the first time.
     loadCanonicalDefaults();
 
-    var q = supa.from('variants_public_with_handle')
-      .select('variant_id, variant_name, email_handle, user_id, last_active_at')
-      .order('last_active_at', { ascending: false })
-      .limit(PAGE_SIZE);
-    if (append && state.cursor) {
-      // Cursor pagination — fetch the next page strictly older than what we
-      // already have. Ties on last_active_at are accepted as duplicates and
-      // dedupe-rejected by id below.
-      q = q.lt('last_active_at', state.cursor);
-    }
-    q.then(function (res) {
-      if (res.error) {
-        // Fall back to the underlying table — happens if the view migration
-        // hasn't been applied yet. Best-effort: use user_id slug as handle.
-        console.warn('[variants] view fetch failed, falling back to variants table', res.error);
-        return supa.from('variants')
-          .select('id, user_id, name, last_active_at, is_public')
-          .eq('is_public', true)
-          .order('last_active_at', { ascending: false })
-          .limit(PAGE_SIZE)
-          .then(function (r2) {
-            if (r2.error) {
-              $('#vpGrid').innerHTML = '<div class="vp-empty">couldn\'t load: ' + escapeHtml(r2.error.message || 'unknown') + '</div>';
-              return null;
-            }
-            return (r2.data || []).map(function (v) {
-              return {
-                variant_id: v.id,
-                variant_name: v.name,
-                user_id: v.user_id,
-                last_active_at: v.last_active_at,
-                email_handle: 'viewer-' + String(v.user_id).slice(0, 6),
-              };
-            });
-          });
+    // Hit GET /api/variants/public — replaces the prior direct
+    // `variants_public_with_handle` view query. email_handle is denormalized
+    // onto each variants row so we no longer need a SECURITY DEFINER join.
+    getJwt().then(function (jwt) {
+      if (!jwt) {
+        $('#vpGrid').innerHTML = '<div class="vp-empty">sign in to browse other viewers\' variants.</div>';
+        state.loading = false;
+        return null;
       }
-      return res.data || [];
+      var url = '/api/variants/public?limit=' + PAGE_SIZE +
+                (append && state.cursor ? '&cursor=' + encodeURIComponent(state.cursor) : '');
+      return fetch(url, {
+        headers: { 'Authorization': 'Bearer ' + jwt },
+      }).then(function (res) {
+        if (!res.ok) {
+          return res.json().catch(function () { return {}; }).then(function (j) {
+            $('#vpGrid').innerHTML = '<div class="vp-empty">couldn\'t load: ' + escapeHtml((j && j.error) || ('http ' + res.status)) + '</div>';
+            state.loading = false;
+            return null;
+          });
+        }
+        return res.json();
+      }).then(function (data) {
+        if (!data) return null;
+        // Stash the server-issued next_cursor so "load more" advances cleanly.
+        state.nextCursor = data.next_cursor || null;
+        return Array.isArray(data.variants) ? data.variants : [];
+      });
     }).then(function (variants) {
+      // Continue with the existing render pipeline.
+      if (variants === null || variants === undefined) return;
       if (!variants) { state.loading = false; return; }
       if (!variants.length) {
         if (append) {
@@ -303,13 +301,28 @@
         return;
       }
       var ids = variants.map(function (v) { return v.variant_id; });
-      supa.from('patches')
-        .select('variant_id, status, scenario_id, spec, applied_at')
-        .in('variant_id', ids)
-        .order('applied_at', { ascending: false })
-        .then(function (patchRes) {
+      // POST /api/variants/patches-batch — one roundtrip for all visible
+      // variants. Server filters to public + caller-owned; no client trust
+      // boundary needed.
+      getJwt().then(function (jwt) {
+        return fetch('/api/variants/patches-batch', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': jwt ? 'Bearer ' + jwt : '',
+          },
+          body: JSON.stringify({ variant_ids: ids }),
+        });
+      }).then(function (res) {
+        if (!res.ok) {
+          return res.json().catch(function () { return {}; }).then(function (j) {
+            throw new Error((j && j.error) || ('http_' + res.status));
+          });
+        }
+        return res.json();
+      }).then(function (patchRes) {
           var byVariant = {};
-          (patchRes.data || []).forEach(function (p) {
+          (patchRes && Array.isArray(patchRes.patches) ? patchRes.patches : []).forEach(function (p) {
             var b = byVariant[p.variant_id] || (byVariant[p.variant_id] = { applied: 0, superseded: 0, appliedList: [] });
             if (p.status === 'applied') { b.applied++; b.appliedList.push(p); }
             if (p.status === 'superseded') b.superseded++;
@@ -346,15 +359,19 @@
           } else {
             state.rows = newRows;
           }
-          // Set cursor to the oldest last_active_at currently in state.
-          if (state.rows.length) {
+          // Cursor: server returns next_cursor; fall back to local-min calc
+          // if it's absent (defensive).
+          if (state.nextCursor) {
+            state.cursor = state.nextCursor;
+          } else if (state.rows.length) {
             state.cursor = state.rows.reduce(function (oldest, r) {
               if (!oldest) return r.lastActiveAt;
               return (new Date(r.lastActiveAt || 0) < new Date(oldest || 0)) ? r.lastActiveAt : oldest;
             }, null);
           }
-          // Honest exhaustion: only if this page returned fewer than PAGE_SIZE.
-          state.exhausted = variants.length < PAGE_SIZE;
+          // Honest exhaustion: server flags no-more-pages via next_cursor === null,
+          // OR this page returned fewer rows than PAGE_SIZE.
+          state.exhausted = !state.nextCursor || variants.length < PAGE_SIZE;
           state.loading = false;
           renderGrid();
           renderFoot();
@@ -510,7 +527,6 @@
 
   // ---- Diff modal ----
   function openDiffModal(variantId, email) {
-    var supa = getSupa();
     var mount = $('#vpDiffMount');
     mount.innerHTML =
       '<div class="id-modal variant-diff-modal" role="dialog" aria-modal="true">' +
@@ -531,23 +547,32 @@
       if (e.key === 'Escape') { shut(); document.removeEventListener('keydown', esc); }
     });
 
-    if (!supa) {
-      mount.querySelector('.id-patches-body').innerHTML = '<div class="id-patches-empty">auth unavailable.</div>';
-      return;
-    }
     // Race the patch fetch with the canonical-defaults load; render after both.
-    var fetchP = supa.from('patches')
-      .select('id, scenario_id, spec, status, applied_at')
-      .eq('variant_id', variantId)
-      .eq('status', 'applied')
-      .order('scenario_id', { ascending: true });
+    // GET /api/variants/patches?variant_id=…&status=applied — server enforces
+    // public-or-owned read access.
+    var fetchP = getJwt().then(function (jwt) {
+      if (!jwt) return { patches: [], __unauthed: true };
+      return fetch('/api/variants/patches?variant_id=' + encodeURIComponent(variantId) + '&status=applied', {
+        headers: { 'Authorization': 'Bearer ' + jwt },
+      }).then(function (res) {
+        if (!res.ok) return { patches: [], __error: true, status: res.status };
+        return res.json();
+      });
+    });
     Promise.all([fetchP, loadCanonicalDefaults()]).then(function (results) {
       var res = results[0];
       var defaults = results[1] || new Map();
       var body = mount.querySelector('.id-patches-body');
       if (!body) return; // modal closed
-      if (res.error) { body.innerHTML = '<div class="id-patches-empty">couldn\'t load.</div>'; return; }
-      var rows = res.data || [];
+      if (res.__unauthed) { body.innerHTML = '<div class="id-patches-empty">sign in to view this variant\'s diff.</div>'; return; }
+      if (res.__error) { body.innerHTML = '<div class="id-patches-empty">couldn\'t load.</div>'; return; }
+      var rows = res.patches || [];
+      // Sort by scenario_id ascending to match the prior query order.
+      rows.sort(function (a, b) {
+        var sa = String(a.scenario_id || '');
+        var sb = String(b.scenario_id || '');
+        return sa < sb ? -1 : sa > sb ? 1 : 0;
+      });
       if (!rows.length) { body.innerHTML = '<div class="id-patches-empty">no applied patches yet — this variant matches canonical.</div>'; return; }
       // Group by scenario.
       var groups = {};
