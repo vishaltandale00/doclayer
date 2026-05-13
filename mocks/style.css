@@ -1152,12 +1152,14 @@ body:has(.advance-pill) .advance-pill { pointer-events: auto; }
    context is read from data-scenario / data-phase on .fb-panel.
 */
 
-/* --- Trigger pill: anchored bottom-right, beneath the advance-pill --- */
+/* --- Trigger pill: anchored bottom-right, stacked ABOVE scenario-nav
+   (scenario-nav lives at bottom:16; this sits at bottom:56 so prev/next
+   doesn't occlude clicks on the trigger). --- */
 .fb-trigger {
   position: fixed;
   right: 16px;
-  bottom: 16px;
-  z-index: 60;
+  bottom: 56px;
+  z-index: 101;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1203,8 +1205,12 @@ body:has(.advance-pill) .advance-pill { pointer-events: auto; }
 }
 .fb-scrim.open { opacity: 1; pointer-events: auto; }
 
-/* When panel is open: dim the stage to focus attention. */
+/* When panel is open: dim the stage and hide the bottom-right nav stack so
+   scenario-nav (z:100) / advance-pill (z:99) don't poke through the modal. */
 body.fb-open .stage { filter: saturate(0.72) brightness(0.78); transition: filter 240ms var(--ease); }
+body.fb-open .scenario-nav,
+body.fb-open .advance-pill,
+body.fb-open .fb-trigger { opacity: 0; pointer-events: none; transition: opacity 180ms var(--ease); }
 
 /* --- Panel: small modal overlay, anchored right --- */
 .fb-panel {
