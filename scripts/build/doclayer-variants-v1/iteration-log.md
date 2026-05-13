@@ -4,6 +4,50 @@ Each iteration appends a 3-5 sentence summary here.
 
 ---
 
+## BUILD COMPLETE — all 8 phases shipped
+
+| Phase | Name | Score | Review attempts | Score arc |
+|---|---|---|---|---|
+| 0 | Patchable surface audit | 9.17 | 2 | — |
+| 1 | Supabase foundation | 9.28 | 3 | — |
+| 2 | Manifest + schema fingerprint | 9.22 | 1 | — |
+| 3 | Apply / Undo / Regenerate | 9.13 | 3 | — |
+| 4 | Client patch flow | 9.10 | 3 | — |
+| 5 | Variants gallery | 9.00 | 2 | 6.48 → 9.00 |
+| 6 | Architect prompt + prose escape hatch | 9.20 | 3 | 8.20 → 8.80 → 9.20 |
+| 7 | Tests | **9.30** | 2 | 7.40 → 9.30 |
+
+**Best score:** 9.30 (Phase 7).
+**Iterations consumed:** 19 / 20 (cap).
+**Schema fingerprint v1:** `170cf77f16aa` — stable across all 19 iterations.
+**Tests:** 138 passing (50 lib + 88 api), 0 fail, 1 todo. L4 fuzz table: 29 injection patterns, all rejected.
+**Migrations pending Supabase apply:** 5 (variants_v1, versions_unique, variants_public_handle, revision_variants, revision_variant_schema_fp).
+**Pending user action:** `git push origin main` (Phase 6 commit local; classifier blocked auto-push). `supabase login && supabase link --project-ref ritjqumjhbkujnvyfkwi && supabase db push`.
+
+---
+
+## Iteration 19 — Phase 7 (Tests) — COMPLETE 9.30/10
+
+**What happened:** Fix agent addressed all 3 P0s from iter 18 by fixing production code, not papering over with "known-gap" assertions. Fix to `lib/macros.ts:106` adds the `test` op on `/variant/content/blocks/order` to delete_block (mirroring insert_block at line 82) so undo can capture prior order. Fix to `lib/patch-guards.ts:61-73` rejects 7 Unicode confusable codepoints (U+FF1C, U+FF1E, U+FF06, U+2039, U+203A, U+27E8, U+27E9) plus case-insensitive `javascript:` substring. Fix to `mocks/07-multiplayer.html:1191` removed the orphan `data-patchable` attribute (preserves schema_fp). Added 11 new L4 fuzz entries (event handlers, style-attr, meta/link/base/object/embed). Test count: 125 → 138.
+
+**Adversarial round 2:** Score **9.30/10**. Zero P0s, zero P1s, 3 P2s (more confusable codepoints would be nice — U+FE64/FE65 small angles, U+276E/F heavy angles; `javascript:` substring rejects legitimate microcopy referring to the protocol; the L2/L4 split honestly documents that L4-only failure paths don't exist with current guards).
+
+**Score arc:** 7.40 → 9.30.
+
+**Status:** Build complete. Loop stops with `stop_reason = all_phases_complete`. No ScheduleWakeup.
+
+---
+
+## Iteration 18 — Phase 7 (Tests) — REVIEW FAILED 7.40/10
+
+**What happened:** Build agent added 66 tests across 6 files (schema-fp-extra, allowlist-extra, apply-layers, apply-l4-fuzz, undo, supersession), bringing the suite to 125 passing. 18-pattern L4 fuzz table. But during test-writing surfaced 3 real bugs: delete_block undo round-trip broken, Unicode fullwidth confusables bypass microcopyGuard, orphan `data-patchable="multiplayer-stuck-suggestion"` with no schema leaf. Build agent documented these as expected behavior instead of fixing.
+
+**Adversarial round 1:** Score **7.40/10**. Three P0s, all the same anti-pattern: "test asserts buggy behavior passes IS theater." Per rubric, Phase 7 must validate correct behavior, not lock in bugs. Fix path: production code fix + flip test assertions to positive.
+
+**Next iteration:** Surgical fix pass.
+
+---
+
 ## Iteration 17 — Phase 6 (Architect prompt + prose escape hatch) — COMPLETE 9.20/10
 
 **What happened:** Surgical fix pass for the two P1s from iter 16. Fix 1 (slot regression): `renderPatchPreview` and `renderRevisionVariantPreview` in `mocks/comments.js` now set `slot.dataset.slotKind = 'patch'|'revision'` on first claim; re-render path falls back to `.dlc-patch-slot-claimed[data-slot-kind=...]` lookup and clears innerHTML for reuse. Fix 2 (stale flag): added `[data-revision-stale="1"]` CSS rule in `mocks/style.css` (dashed underline + hover tooltip), cleared the flag on successful accept (`applyRevisionToDom`) and on successful replay (`replayAcceptedRevisions`).

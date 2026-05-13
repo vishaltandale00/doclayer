@@ -5,8 +5,8 @@
   "description": "doclayer mocks + feedback drafting serverless function",
   "scripts": {
     "build": "node scripts/build-inject-env.js",
-    "test:lib": "node --experimental-strip-types --test lib/__tests__/schema-fp.test.ts lib/__tests__/allowlist.test.ts",
-    "test:api": "node --experimental-strip-types --test api/__tests__/apply.test.ts",
+    "test:lib": "node --experimental-strip-types --test lib/__tests__/schema-fp.test.ts lib/__tests__/schema-fp-extra.test.ts lib/__tests__/allowlist.test.ts lib/__tests__/allowlist-extra.test.ts",
+    "test:api": "node --experimental-strip-types --test api/__tests__/apply.test.ts api/__tests__/apply-layers.test.ts api/__tests__/apply-l4-fuzz.test.ts api/__tests__/undo.test.ts api/__tests__/supersession.test.ts",
     "test": "npm run test:lib && npm run test:api"
   },
   "dependencies": {

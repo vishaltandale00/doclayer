@@ -95,9 +95,15 @@ export function expandMacro(macro: Macro, currentDoc: JsonValue): MacroResult {
       return { ok: false, reason: 'delete_block: blockId not in order' };
     }
     const newOrder = order.filter((b) => b !== macro.blockId);
+    // Paired test on /content/blocks/order BEFORE the replace so undo
+    // synthesis can capture the prior order array and reconstruct it.
+    // Mirrors insert_block's pattern above (lines 82-83). Without this
+    // test op, undo's inverseOp() has no priorTestByPath entry for the
+    // order path and the inverse `replace` ends up writing null.
     const ops: Op[] = [
       { op: 'test', path: `/variant/content/blocks/items/${macro.blockId}`, value: items[macro.blockId] },
       { op: 'remove', path: `/variant/content/blocks/items/${macro.blockId}` },
+      { op: 'test', path: '/variant/content/blocks/order', value: order as unknown as JsonValue },
       { op: 'replace', path: '/variant/content/blocks/order', value: newOrder },
     ];
     return { ok: true, ops };

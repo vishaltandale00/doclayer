@@ -53,6 +53,23 @@ export function microcopyGuard(s: unknown, maxLen = 280): GuardResult {
     if (c === 0x3c || c === 0x3e || c === 0x26) {
       return { ok: false, reason: 'microcopy: HTML markup char (< > &)' };
     }
+    // Unicode confusables for < > & — a viewer/downstream-renderer that does
+    // width-normalization (NFKC) could re-introduce HTML markup risk.
+    // U+FF1C ＜ fullwidth less-than, U+FF1E ＞ fullwidth greater-than,
+    // U+FF06 ＆ fullwidth ampersand, U+2039 ‹, U+203A ›, U+27E8 ⟨, U+27E9 ⟩
+    // (mathematical/punctuation angle brackets that visually mimic < >).
+    if (
+      c === 0xff1c || c === 0xff1e || c === 0xff06 ||
+      c === 0x2039 || c === 0x203a ||
+      c === 0x27e8 || c === 0x27e9
+    ) {
+      return { ok: false, reason: 'microcopy: Unicode HTML markup confusable' };
+    }
+  }
+  // Also reject `javascript:` substring (case-insensitive) — covers payloads
+  // like inline-style URL hijacks where `< > &` aren't present.
+  if (n.toLowerCase().includes('javascript:')) {
+    return { ok: false, reason: 'microcopy: banned substring "javascript:"' };
   }
   return { ok: true };
 }
