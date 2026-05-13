@@ -63,3 +63,41 @@ Adversarial scored **9.22/10 — PASS**. Canonicalization audited: $refs inlined
 Reconciled audit's 127 → schema's 125: `--typing-speed-ms` and `--anim-scale` were double-counted in the Phase 0 audit (appearing in both "CSS variables" and "Animation scales" tables). Schema places each at one canonical path.
 
 **Next iteration**: Phase 3 (apply / undo / regenerate endpoints) — server-side patch pipeline. Will need migration applied to test end-to-end.
+
+## Iteration 7 — 2026-05-12T23:14Z
+
+**Phase 3** (Apply/Undo/Regenerate endpoints) — biggest server-side surface. Build agent shipped ~1665 LOC: full L1-L4 validation pipeline, RFC 6902 test ops, Model B supersession, undo with inverse synthesis, regenerate path for stale fps, architect prompt rewritten per spec section (j) with inline schema + fp + allowlist. 45/45 tests pass.
+
+Adversarial scored **6.82/10 — REJECT** (below 7.0). 8 must-fix items, 3 HIGH-severity correctness bugs in production-critical paths:
+
+1. **Macro pairing bypass**: when a macro is present, L1.5 test-pairing check is skipped for ALL user-supplied ops. A hostile architect can attach a valid macro + ship unpaired mutating ops alongside it. Real exploit path.
+2. **Concurrent version fork**: two concurrent applies read same latestVersion, both pass L1-L4, both insert with same prior_version_id. No optimistic lock. Version history forks silently. Real race.
+3. **Undo macro replay drift**: undo re-expands macros against CURRENT doc, not pre-patch doc. If doc state drifted between apply and undo, inverse ops corrupt the doc. Need to persist expanded effectiveOps.
+
+Plus 2 mediums (rgba channel range bounds, U+2028/U+2029 unhandled, scenario_id hardcoded 'unknown') and 1 low (L4 smoke synthetic-only).
+
+Reviewer earned its keep — these would have been catastrophic in production.
+
+**Next iteration**: Phase 3 fix agent on 8 findings. Migration apply still blocked on `! supabase login`.
+
+## Iteration 8 — 2026-05-12T23:31Z
+
+**Phase 3 fix iter 1**. Fix agent addressed all 8 prior findings: macro pairing bypass closed (security comment + always-enforce pair-check), concurrent-version-fork prevented via unique constraint migration + 409 VERSION_FORK_DETECTED, undo replays captured `effective_ops` instead of re-expanding macros against drifted doc, color guard parses RGB channels with bounds, applyOp gets strictAdd + allowAbsenceTest options for macro TOCTOU guard, U+2028/U+2029 added to microcopy rejection set, scenario_id required + validated against 11-scenario allowlist, L4 smoke loads real `mocks/<id>.html`. 9 new regression tests. 54/54 passing.
+
+Adversarial re-review scored **8.87/10 — FIX**. Score arc: 6.82 → 8.87. Reviewer noted: "All 8 must-fix items genuinely landed with regression coverage. The remaining gap is polish, not security. Recommend treating these as nits and granting PASS." 3 remaining: (1) L4 silently falls back to synthetic when mocks file missing — fail-closed instead; (2) Audit insert has no error handling — silent gaps if network blips; (3) Supersession scans `spec.ops` which is empty for macro-only patches.
+
+This is the **2nd review attempt** on Phase 3. 3rd attempt rejection would trigger stuck escalation. These 3 polish items should clear 9.0.
+
+**Next iteration**: Phase 3 fix iter 2 on 3 polish items. Migration `20260512000001_versions_unique.sql` also pending apply.
+
+## Iteration 9 — 2026-05-12T23:44Z
+
+**Phase 3 fix iter 2 — PASS.** All 3 polish items landed: L4 smoke fails-closed when scenario mock missing (was silently fallback); audit insert wrapped try/catch with console.error + `audit_log_warning` flag in response; supersession scan unions paths from both `spec.ops` and `spec.effective_ops` so macro-only patches participate in lineage. 5 new tests; 59/59 passing.
+
+Adversarial scored **9.13/10 — PASS** on 3rd attempt. Score arc: 6.82 → 8.87 → 9.13.
+
+The reviewer earned its keep on Phase 3 — caught three production-critical correctness bugs that would have shipped catastrophically: macro pairing bypass (hostile architect smuggling unpaired ops), concurrent version fork (no optimistic lock → silent history divergence), undo macro replay drift (re-expanding against drifted doc → corruption). All closed with regression coverage.
+
+Phase 3 ships. Two migrations pending Supabase apply: `20260512000000_variants_v1.sql` + `20260512000001_versions_unique.sql`.
+
+**Next iteration**: Phase 4 (Client patch flow) — frontend integration: patch preview, apply button, 60s undo countdown, patch-stack popover. Builds on the now-stable server pipeline.

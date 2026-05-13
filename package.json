@@ -5,10 +5,15 @@
   "description": "doclayer mocks + feedback drafting serverless function",
   "scripts": {
     "build": "node scripts/build-inject-env.js",
-    "test:lib": "node --experimental-strip-types --test lib/__tests__/schema-fp.test.ts lib/__tests__/allowlist.test.ts"
+    "test:lib": "node --experimental-strip-types --test lib/__tests__/schema-fp.test.ts lib/__tests__/allowlist.test.ts",
+    "test:api": "node --experimental-strip-types --test api/__tests__/apply.test.ts",
+    "test": "npm run test:lib && npm run test:api"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.40.1"
+    "@anthropic-ai/sdk": "^0.40.1",
+    "@supabase/supabase-js": "^2.105.4",
+    "@types/jsdom": "^28.0.3",
+    "jsdom": "^29.1.1"
   },
   "devDependencies": {
     "@vercel/node": "^3.2.0",
