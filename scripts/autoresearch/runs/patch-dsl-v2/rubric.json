@@ -1,0 +1,26 @@
+```json
+{
+  "criteria": [
+    "safety_blast_radius",
+    "expressiveness_for_real_edits",
+    "implementation_simplicity",
+    "auditability_and_reviewability",
+    "validation_layering",
+    "schema_evolvability",
+    "architect_ergonomics",
+    "concreteness_of_answer"
+  ],
+  "weights": {
+    "safety_blast_radius": 0.22,
+    "expressiveness_for_real_edits": 0.14,
+    "implementation_simplicity": 0.12,
+    "auditability_and_reviewability": 0.12,
+    "validation_layering": 0.15,
+    "schema_evolvability": 0.10,
+    "architect_ergonomics": 0.08,
+    "concreteness_of_answer": 0.07
+  },
+  "target_score": 8.5,
+  "notes": "doclayer routes Claude-authored patches into live variant docs, so safety dominates: a bad op (move/copy across subtrees, unscoped pointer) can silently corrupt a viewer-facing artifact. Heaviest weights go to blast-radius containment (op subset + path scoping) and validation layering (client+server defense in depth), since (a)/(b)/(d) live there. Expressiveness is weighted next — the subset must still cover the real mutation targets in (c) (CSS vars, timing, named text, tokens, visibility flags) without forcing architect contortions. Auditability matters because every patch is a reviewable proposal in the harness loop. Concreteness is weighted to penalize answers that don't actually enumerate the allowed JSONB paths and forbidden ones — the question demands a list, not a philosophy. Target 8.5 is firm: a winning answer must commit to a specific op subset, a specific scoping mechanism, a specific path allowlist, and a specific validation pipeline."
+}
+```

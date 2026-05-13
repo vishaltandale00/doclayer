@@ -1,33 +1,60 @@
 /* doclayer — shared mock styling */
 
 :root {
+  /* PATCHABLE: /variant/tokens/color/bg guard=colorToken */
   --bg: #0a0a0b;
+  /* PATCHABLE: /variant/tokens/color/panel guard=colorToken */
   --panel: #131316;
+  /* PATCHABLE: /variant/tokens/color/panel-2 guard=colorToken */
   --panel-2: #1a1a1f;
+  /* PATCHABLE: /variant/tokens/color/border guard=colorToken */
   --border: #26262c;
+  /* PATCHABLE: /variant/tokens/color/border-soft guard=colorToken */
   --border-soft: #1f1f25;
+  /* PATCHABLE: /variant/tokens/color/text guard=colorToken */
   --text: #ebebef;
+  /* PATCHABLE: /variant/tokens/color/text-2 guard=colorToken */
   --text-2: #b0b0b8;
+  /* PATCHABLE: /variant/tokens/color/text-muted guard=colorToken */
   --text-muted: #6a6a74;
+  /* PATCHABLE: /variant/tokens/color/accent guard=colorToken */
   --accent: #95e35d;
+  /* PATCHABLE: /variant/tokens/color/accent-soft guard=colorToken */
   --accent-soft: #95e35d22;
+  /* PATCHABLE: /variant/tokens/color/accent-2 guard=colorToken */
   --accent-2: #7a9a6e;
+  /* PATCHABLE: /variant/tokens/color/vishal guard=colorToken */
   --vishal: #6ba0ff;
+  /* PATCHABLE: /variant/tokens/color/akhil guard=colorToken */
   --akhil: #ff8aa8;
+  /* PATCHABLE: /variant/tokens/color/warn guard=colorToken */
   --warn: #ffb86b;
   /* third-writer color: muted purple — sits between vishal blue and akhil pink */
+  /* PATCHABLE: /variant/tokens/color/third guard=colorToken */
   --third: #b58acc;
   --third-soft: #b58acc1a;
   --third-border: #b58acc55;
+  /* PATCHABLE: /variant/tokens/typography/code/family guard=fontFamily */
   --code: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  /* PATCHABLE: /variant/tokens/typography/sans/family guard=fontFamily */
   --sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  /* PATCHABLE: /variant/tokens/typography/serif/family guard=fontFamily */
   --serif: 'Iowan Old Style', 'Charter', 'Source Serif Pro', Georgia, serif;
+  /* PATCHABLE: /variant/tokens/spacing/radius guard=spacing(0,24) */
   --r: 8px;
+  /* PATCHABLE: /variant/tokens/spacing/radius-lg guard=spacing(0,32) */
   --r-lg: 14px;
   /* Cross-scenario row reservations (topbar + harness-strip + content + statusbar). */
+  /* PATCHABLE: /variant/tokens/spacing/row-topbar guard=spacing(28,80) */
   --row-topbar: 44px;
+  /* PATCHABLE: /variant/tokens/spacing/row-harness guard=spacing(20,48) */
   --row-harness: 27px;
+  /* PATCHABLE: /variant/tokens/spacing/row-status guard=spacing(20,48) */
   --row-status: 28px;
+  /* PATCHABLE: /variant/styles/cssVars/typing-speed-ms guard=int(10,300) */
+  --typing-speed-ms: 60;
+  /* PATCHABLE: /variant/styles/animation/global/duration guard=float(0.5,2.0) */
+  --anim-scale: 1.0;
 }
 
 * { box-sizing: border-box; }

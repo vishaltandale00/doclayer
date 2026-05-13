@@ -1,0 +1,28 @@
+```json
+{
+  "perspective": "pragmatist",
+  "candidate": {
+    "title": "4-op patch DSL (add/remove/replace/test) over a tagged-path allowlist, validated client + server + dry-render",
+    "summary": "Architect-generated patches use a strict 4-op subset of RFC 6902 — add, remove, replace, test — and may only target JSON Pointers that match a server-enforced allowlist of pre-tagged `data-patchable` leaves. Every patch is validated twice (client JSON Schema for harness UX, server JSON Schema as the authoritative gate) and rendered as a dry-run preview before write, with the full patch persisted as a reviewable artifact in the harness loop.",
+    "details": "(a) Op subset: allow `add`, `remove`, `replace`, `test`. Forbid `move` and `copy`. Rationale: every real mutation in (c) is a leaf-value write, and move/copy are the two ops that can silently relocate state across subtrees — the exact failure mode the rubric calls out. `test` is required as a precondition for optimistic concurrency (test the prior value of the path before replacing) and to let the architect express 'only change this if the doc is still in state X'. RFC 6902 mandates `test` errors on mismatch, which gives us free conflict detection.\n\n(b) Path scoping: every patch path must resolve to a key whose schema is annotated `\"x-patchable\": true` (or sits under a prefix marked patchable). The server holds the authoritative allowlist keyed by variant schema version; the client gets the same list shipped down. Arbitrary JSON Pointer is rejected at parse time. JSON Pointer escape sequences and `__proto__`/`constructor`/`prototype` segments are rejected unconditionally.\n\n(c) Concrete allowlist for the variant doc:\n  ALLOWED (replace/add/remove on leaf):\n    - `/variant/styles/cssVars/<name>`               (string, CSS value)\n    - `/variant/styles/animation/<name>/duration`    (ms, 0-10000)\n    - `/variant/styles/animation/<name>/easing`      (enum)\n    - `/variant/styles/animation/<name>/delay`       (ms, 0-5000)\n    - `/variant/tokens/color/<name>`                 (hex/oklch)\n    - `/variant/tokens/spacing/<name>`               (rem string)\n    - `/variant/tokens/typography/<name>/{family,size,weight,lineHeight}`\n    - `/variant/content/<elementId>/text`            (string, length<=N)\n    - `/variant/content/<elementId>/visible`         (boolean)\n  FORBIDDEN (server rejects):\n    - `/variant/id`, `/variant/schemaVersion`, `/variant/createdAt`, `/variant/owner`, `/variant/permissions/**`\n    - `/variant/content/<elementId>/type` (no element type changes)\n    - `/variant/content/<elementId>/children` structural reshape (only text + visible)\n    - `/variant/scripts/**`, `/variant/handlers/**`, `/variant/events/**`\n    - any path whose segment matches `__proto__|constructor|prototype`\n    - whole-object replaces at `/variant`, `/variant/styles`, `/variant/content`, `/variant/tokens` (only leaves)\n\n(d) Validation pipeline (defense in depth):\n  1. Client: JSON Schema validates op-shape + path-allowlist + per-leaf type. Surfaces errors in the harness UI before submit.\n  2. Server: re-runs the same schema (single source of truth, re-shipped to client at session start), then walks each op and verifies (path in allowlist for this variant.schemaVersion, no forbidden segment, value passes per-leaf schema).\n  3. Server dry-render: applies the patch to a cloned doc, runs the variant renderer headlessly, rejects if render throws or output diff exceeds a configured DOM-mutation cap.\n  4. Write: atomic; the original patch JSON is stored as an audit record alongside the new doc version with `proposer=architect`, `reviewer`, `applied_at`.",
+    "implementation_notes": "JSON Pointer prefix matching + per-leaf JSON Schema is ~150 lines of code. The allowlist is generated from the variant JSON Schema's `x-patchable` annotations at build time so it can't drift from the schema."
+  },
+  "scores": {
+    "safety_blast_radius": 9,
+    "expressiveness_for_real_edits": 9,
+    "implementation_simplicity": 8,
+    "auditability_and_reviewability": 9,
+    "validation_layering": 9,
+    "schema_evolvability": 7,
+    "architect_ergonomics": 8,
+    "concreteness_of_answer": 9
+  },
+  "weighted_total": 8.60,
+  "gaps": [
+    "Schema evolvability is the weakest link: when the variant schema bumps versions, the allowlist must be versioned and every patch must carry a `target_schema_version`. The proposal asserts this is keyed by version but doesn't specify the migration story for in-flight patches authored against the old schema — likely needs an 'expired patch' rejection path and architect-side schema discovery.",
+    "Array handling is under-specified. `add`/`remove` on arrays (e.g., reordering animation keyframes) is technically permitted but the proposal treats animation as a named map, not an ordered list. If real variants need ordered arrays (e.g., timeline keyframes), we either need a `/keyframes/<id>` keyed map or explicit array-index ops with bounds checks.",
+    "Dry-render cost is unbounded — for complex variant docs the headless render on every patch may dominate latency. No mention of caching, partial-render shortcuts, or a fast-path for patches that only touch CSS vars (which can be validated without re-render)."
+  ],
+  "evidence": []
+}
+```

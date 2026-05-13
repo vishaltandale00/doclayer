@@ -753,9 +753,9 @@
 <body>
 
 <!-- Brief intro overlay (fades after ~2s) -->
-<div class="intro-overlay">
+<div class="intro-overlay" data-patchable="reader-intro-overlay" data-patchable-type="visible">
   <div class="badge">scenario 06 · reader-harness</div>
-  <h2>watch one article <em>re-render</em> for three priors</h2>
+  <h2 data-patchable="reader-intro-h2">watch one article <em>re-render</em> for three priors</h2>
   <div class="sub">one manifest. three binding sets. zero server roundtrips.</div>
 </div>
 
@@ -785,7 +785,7 @@
   <div class="reader-top">
     <div class="url"><span class="lock">⬢</span>doclayer.live / posts / meta-harnesses-1-what-is-a-harness</div>
     <div class="reload">↻ same DOM</div>
-    <div class="pitch">same article. same manifest. <b>three priors.</b> harness re-binds in the browser.</div>
+    <div class="pitch" data-patchable="reader-pitch">same article. same manifest. <b>three priors.</b> harness re-binds in the browser.</div>
   </div>
 
   <!-- ROW 2: reader-prior-picker (atom) -->
@@ -793,19 +793,19 @@
     <div class="label">atom · <b>reader-prior-picker</b></div>
     <div class="pill-row">
       <span class="prior-pill-rd" data-prior="engineer">
-        <span class="dot active-color"></span>AI engineer
+        <span class="dot active-color"></span><span data-patchable="reader-prior-label-eng">AI engineer</span>
         <span class="pill-pip">binding…</span>
       </span>
       <span class="prior-pill-rd" data-prior="pm">
-        <span class="dot active-color"></span>PM
+        <span class="dot active-color"></span><span data-patchable="reader-prior-label-pm">PM</span>
         <span class="pill-pip">binding…</span>
       </span>
       <span class="prior-pill-rd" data-prior="researcher">
-        <span class="dot active-color"></span>researcher
+        <span class="dot active-color"></span><span data-patchable="reader-prior-label-res">researcher</span>
         <span class="pill-pip">binding…</span>
       </span>
     </div>
-    <div class="grammar">grammar · <b>evolving-explainer</b> · <b>revision-variant</b> · <b>comment-thread</b></div>
+    <div class="grammar" data-patchable="reader-grammar-strip" data-patchable-type="visible">grammar · <b>evolving-explainer</b> · <b>revision-variant</b> · <b>comment-thread</b></div>
   </div>
 
   <!-- ROW 3: stage — single column → three-column money shot -->
@@ -827,9 +827,9 @@
           <span class="label-text"></span>
         </div>
 
-        <div class="article">
+        <div class="article" data-prose="reader-article-engineer-pm-researcher">
           <h1>What is a harness?</h1>
-          <div class="byline">Akhil R &amp; Vishal Tandale · 2026 · part 1 of 4</div>
+          <div class="byline" data-patchable="reader-byline">Akhil R &amp; Vishal Tandale · 2026 · part 1 of 4</div>
 
           <!-- H2 swap-zone -->
           <div class="swap-zone">

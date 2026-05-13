@@ -2226,7 +2226,7 @@
         <span class="v-comment-anchor vca2">tighten recursive claim</span>
         <div class="twoup-body">
           <div class="sec">§3.2 · RLMs framing</div>
-          <h3>Recursion as the prior</h3>
+          <h3 data-patchable="flow-vishal-section-h">Recursion as the prior</h3>
           <p class="vp"><span data-typewriter data-tw-text="The trouble with reward shaping is that what feels right at step 5 can poison step 50 — the harness sees only the local gradient unless the architect threads memory through the manifest" data-tw-delay="12000" data-tw-loop="123500" data-tw-speed="0.7"></span><span class="type-caret"></span></p>
           <div class="ctx-card">
             <div class="h">akhil's comments · §3.2</div>
@@ -2294,12 +2294,12 @@
         </div>
         <div class="twoup-body">
           <div class="sec">§1 · why scaling LLMs doesn't solve it</div>
-          <h3>The shape of the ceiling</h3>
+          <h3 data-patchable="flow-akhil-section-h">The shape of the ceiling</h3>
           <p class="vp"><span data-typewriter data-tw-text="Scaling buys you fluency, not strategy. The harness is where strategy lives — and no amount of parameter count substitutes for the recursive loop that lets a system decide what to think about next" data-tw-delay="13200" data-tw-loop="123500" data-tw-speed="0.7"></span><span class="type-caret"></span></p>
         </div>
       </div>
       <!-- Loop indicator: the cycle has completed, will happen again next chunk -->
-      <div class="loop-indicator">loop ↻ · type → augment → review → comments · next chunk</div>
+      <div class="loop-indicator" data-patchable="flow-loop-indicator" data-patchable-type="visible">loop ↻ · type → augment → review → comments · next chunk</div>
     </div>
 
     <!-- Trajectory layer (sP1–sP3) — series proposal + lanes -->
@@ -2313,22 +2313,22 @@
         <div class="sp-cards">
           <div class="sp-card c1">
             <span class="num">Article 1</span>
-            <span class="title">What is a harness?</span>
+            <span class="title" data-patchable="flow-series-card-1">What is a harness?</span>
             <span class="tag">audience · AI engineers</span>
           </div>
           <div class="sp-card c2">
             <span class="num">Article 2</span>
-            <span class="title">Why scaling LLMs doesn't solve it</span>
+            <span class="title" data-patchable="flow-series-card-2">Why scaling LLMs doesn't solve it</span>
             <span class="tag">audience · builders</span>
           </div>
           <div class="sp-card c3">
             <span class="num">Article 3</span>
-            <span class="title">Building meta-harnesses</span>
+            <span class="title" data-patchable="flow-series-card-3">Building meta-harnesses</span>
             <span class="tag">audience · practitioners</span>
           </div>
           <div class="sp-card c4">
             <span class="num">Article 4</span>
-            <span class="title">Multiplayer &amp; evals</span>
+            <span class="title" data-patchable="flow-series-card-4">Multiplayer &amp; evals</span>
             <span class="tag">audience · researchers</span>
           </div>
         </div>
@@ -2389,20 +2389,20 @@
       </div>
 
       <!-- Ghosted agent column (hint at R/A/V agents that fire later) -->
-      <div class="agent-rail-ghost" aria-hidden="true">
+      <div class="agent-rail-ghost" data-patchable="flow-agent-rail" data-patchable-type="visible" aria-hidden="true">
         <div class="arg-head">AI agents<br>standby</div>
         <div class="arg-pip research"><div class="arg-ico">R</div><span class="arg-lbl">research</span></div>
         <div class="arg-pip adversarial"><div class="arg-ico">A</div><span class="arg-lbl">adversarial</span></div>
         <div class="arg-pip visual"><div class="arg-ico">V</div><span class="arg-lbl">visual</span></div>
       </div>
-      <div class="sp-caption cap-sp1">the architect proposed a trajectory · <b>4 articles</b> · ~6 weeks</div>
+      <div class="sp-caption cap-sp1" data-patchable="flow-sp-caption-1">the architect proposed a trajectory · <b>4 articles</b> · ~6 weeks</div>
       <div class="sp-caption cap-sp2">both authors write · sections distributed by prior · <b>akhil</b> leans density, <b>vishal</b> leans exploration</div>
       <div class="sp-caption cap-sp4"><b>two writers</b> · llm auto-augments while typing · research · adversarial · grounding</div>
       <div class="sp-caption cap-sp5"><b>review fires</b> · notification → akhil's workspace reshapes to review mode → comments return to vishal</div>
       <div class="sp-caption cap-sp6">single-article zoom · <b>akhil still working</b> in parallel · rail stays for the rest of the playthrough</div>
 
       <!-- Counter strip (sP3): mirrors 08's thesis anchor -->
-      <div class="flow-counter" aria-hidden="true">
+      <div class="flow-counter" data-patchable="flow-counter-strip" data-patchable-type="visible" aria-hidden="true">
         <span class="fc-label">distribution · ready</span>
         <span class="fc-stat"><b>4</b><span class="fc-key">articles</span></span>
         <span class="fc-sep">·</span>
@@ -2471,7 +2471,7 @@
       <div class="col center" style="position:relative;">
         <div class="panel-h doc-header" style="background:var(--panel);">
           <span class="doc-pin">DOC</span>
-          <span class="doc-title" id="doc-title">Meta-harnesses</span>
+          <span class="doc-title" id="doc-title" data-prose="flow-doc">Meta-harnesses</span>
           <span class="meta wc">draft <b id="wc-draft">0</b> · <b id="wc-words">0</b> words · <b id="wc-time">just now</b></span>
         </div>
 
@@ -2490,7 +2490,7 @@
         <div class="flow-cursor vishal" data-name="Vishal"></div>
         <div class="flow-cursor akhil" data-name="Akhil"></div>
 
-        <div class="editor-flow">
+        <div class="editor-flow" data-prose="flow-editor-body">
           <h1>Meta-harnesses</h1>
           <div class="subtitle">A series — by Akhil R &amp; Vishal Tandale</div>
           <h2>What is a harness?</h2>

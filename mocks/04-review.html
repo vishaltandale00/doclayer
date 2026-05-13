@@ -614,31 +614,31 @@
       <div class="particle p3"><div class="trail"></div></div>
     </div>
 
-    <div class="review-doc">
+    <div class="review-doc" data-prose="review-editor-body">
       <h1 class="fade-up d-1">Meta-harnesses</h1>
       <div class="subtitle fade-up d-1" style="font-style:italic;color:var(--text-muted);font-size:14px;margin-bottom:32px;">A series, target: AI engineers and builders.</div>
 
       <h2 class="fade-up d-2">3. Building meta-harnesses</h2>
 
-      <div class="block approved fade-up d-2">
+      <div class="block approved fade-up d-2" data-patchable-type="block" data-block-id="review-block-1">
         <div class="approval-mark">&#10003;</div>
         <p>If the harness is the controller, the meta-harness is the controller that authors controllers. It evolves as the task and the user evolve. Two open questions follow: how do you express the search space, and how do you stay within the user's prior?</p>
       </div>
 
-      <div class="block has-suggestion fade-up d-3">
+      <div class="block has-suggestion fade-up d-3" data-patchable-type="block" data-block-id="review-block-2">
         <p class="edit-target" style="min-height: 6.5em;">
           <span class="edit-before">The search space is not free. Every harness atom is typed; every mutation is a delta. The Architect — an LLM stage that emits a manifest, not raw HTML — is forced to compose within a grammar. This is the difference between a model that hallucinates a UI and a model that picks <em>atoms from a kit</em>.</span>
           <span class="edit-after">The search space is not free. Every harness atom is typed; every mutation is a delta. The Architect — an LLM stage that emits a manifest, not raw HTML — is forced to compose within a grammar. This is the difference between a model that hallucinates a UI and a model that picks <span class="hl">atoms from a typed kit</span>.</span>
         </p>
         <div class="chip-row">
-          <span class="chip" id="chip-1">tighten · "search space is constrained" <span class="x">&times;</span></span>
-          <span class="chip" id="chip-2">add citation · meta-ide grammar <span class="x">&times;</span></span>
-          <span class="chip" id="chip-3" style="background: #95e35d33; border-color: var(--accent); color: #c8f094;">accept · atoms from a kit &rarr; atoms from a <em>typed</em> kit</span>
-          <span class="chip" id="chip-4">soften · "forced to compose" <span class="x">&times;</span></span>
+          <span class="chip" id="chip-1" data-patchable="review-chip-1">tighten · "search space is constrained" <span class="x">&times;</span></span>
+          <span class="chip" id="chip-2" data-patchable="review-chip-2">add citation · meta-ide grammar <span class="x">&times;</span></span>
+          <span class="chip" id="chip-3" data-patchable="review-chip-3" style="background: #95e35d33; border-color: var(--accent); color: #c8f094;">accept · atoms from a kit &rarr; atoms from a <em>typed</em> kit</span>
+          <span class="chip" id="chip-4" data-patchable="review-chip-4">soften · "forced to compose" <span class="x">&times;</span></span>
         </div>
       </div>
 
-      <div class="block fade-up d-4 comment-anchor" style="border-left: 2px solid var(--akhil);">
+      <div class="block fade-up d-4 comment-anchor" data-patchable-type="block" data-block-id="review-block-3" style="border-left: 2px solid var(--akhil);">
         <p>Staying within the user's prior is the harder half. The harness must remember what was pinned, what was dismissed, and what voice the user actually writes in. Voice is the wedge.</p>
         <div class="inline-thread">
           <div class="msg akhil"><span class="who">akhil</span>"Voice is the wedge" — pull this up. It's the thesis of §3, not the punchline.</div>
@@ -648,12 +648,12 @@
         </div>
       </div>
 
-      <div class="block has-suggestion fade-up d-5 auto-tightened">
+      <div class="block has-suggestion fade-up d-5 auto-tightened" data-patchable-type="block" data-block-id="review-block-4">
         <p>And this is where it gets recursive. The harness watches the user write, infers a voice model, then re-asks the model to author in that voice. Imagine the loop running for a year — the doc isn't yours, it's a frozen image of how you write right now.</p>
       </div>
 
       <h2 class="fade-up d-6">4. Multiplayer harnesses</h2>
-      <div class="block fade-up d-6 in-draft">
+      <div class="block fade-up d-6 in-draft" data-patchable-type="block" data-block-id="review-block-5">
         <p>Multiplayer is where the harness gets strange. An RPG world that reshapes as people play it; a social platform where the harness adapts per subgroup — parties, events, projects, group chats all with their own evolving surface. The shipping question is what you ship: a small kernel and a set of rules the harness adapts<span class="live-cursor"></span></p>
       </div>
     </div>
@@ -663,9 +663,9 @@
       <div class="panel-body">
 
         <!-- Suggestion budget: visible dismissal rate dropping after lesson -->
-        <div class="budget">
+        <div class="budget" data-patchable="review-budget" data-patchable-type="visible">
           <div class="label">
-            <span>AI suggestion budget</span>
+            <span data-patchable="review-budget-label">AI suggestion budget</span>
             <span class="state tightening">&#9656; tightening</span>
           </div>
           <div class="ratio">
@@ -685,7 +685,7 @@
         </div>
 
         <div class="rail-section-h">Approval gate</div>
-        <div class="timeline">
+        <div class="timeline" data-patchable="review-approval-gate" data-patchable-type="visible">
           <div class="row done"><span class="check"></span>&sect;1 What is a harness</div>
           <div class="row done"><span class="check"></span>&sect;2 Why scaling LLMs</div>
           <div class="row done" style="color:var(--accent);"><span class="check"></span>&sect;3.1 Building meta-harnesses · just now</div>
@@ -697,7 +697,7 @@
         <div class="rail-section-h">Curator · lesson memory</div>
 
         <!-- Lesson card: forms via particle absorption, then rolls open -->
-        <div class="lesson-card">
+        <div class="lesson-card" data-patchable="review-lesson-card" data-patchable-type="visible">
           <div class="inner">
             <span style="font-family:var(--code);font-size:10px;color:var(--accent);">curator &middot; new lesson</span><br>
             "Don't suggest tightening when the long form carries a recursive thought (see &sect;3.1, &sect;3.3). Pattern: clauses that open with 'and this is where', or that re-assert via metaphor."

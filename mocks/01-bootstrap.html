@@ -311,23 +311,23 @@
     <!-- Stage 1: Bootstrap form -->
     <div id="stage-form" class="bootstrap-stage">
       <div class="bootstrap-card fade-up">
-        <h2>What are you writing?</h2>
-        <div class="sub">Four answers. The workspace composes itself around what you're writing.</div>
+        <h2 data-patchable="bootstrap-h2">What are you writing?</h2>
+        <div class="sub" data-patchable="bootstrap-sub">Four answers. The workspace composes itself around what you're writing.</div>
 
         <div class="field">
-          <label>Title</label>
+          <label data-patchable="bootstrap-label-title">Title</label>
           <div class="input typing" id="t1"></div>
         </div>
         <div class="field">
-          <label>Co-authors</label>
+          <label data-patchable="bootstrap-label-coauthors">Co-authors</label>
           <div class="input typing" id="t2"></div>
         </div>
         <div class="field">
-          <label>Audience</label>
+          <label data-patchable="bootstrap-label-audience">Audience</label>
           <div class="input typing" id="t3"></div>
         </div>
         <div class="field">
-          <label>Output</label>
+          <label data-patchable="bootstrap-label-output">Output</label>
           <div class="input typing" id="t4"></div>
         </div>
 
@@ -399,21 +399,21 @@
         <div class="panel" style="border-right: 1px solid var(--border);">
           <div class="panel-header">Document — <span class="muted">draft 0 · 0 words · just now</span></div>
           <div class="editor fade-up d-2" style="padding: 32px 56px;">
-            <h1 class="fade-up d-1">Meta-harnesses<span class="fit-pill fade-up d-3">audience-fit · 0.86</span></h1>
-            <div class="subtitle fade-up d-2">A series — by Akhil R &amp; Vishal Tandale</div>
+            <h1 class="fade-up d-1">Meta-harnesses<span class="fit-pill fade-up d-3" data-patchable="bootstrap-fit-pill">audience-fit · 0.86</span></h1>
+            <div class="subtitle fade-up d-2" data-prose="bootstrap-editor-subtitle">A series — by Akhil R &amp; Vishal Tandale</div>
             <div class="doc-meta fade-up d-3">
               <span><b>draft 0</b></span><span class="sep">·</span>
               <span><b>0</b> words</span><span class="sep">·</span>
               <span>edited <b>just now</b></span><span class="sep">·</span>
               <span>2 cursors idle</span>
             </div>
-            <p class="fade-up d-4" style="color: var(--text-muted); font-style: italic; font-family: var(--sans); font-size: 13px; border-left: 2px solid var(--accent); padding: 8px 12px; background: var(--panel);">
+            <p class="fade-up d-4" data-prose="bootstrap-editor-body" style="color: var(--text-muted); font-style: italic; font-family: var(--sans); font-size: 13px; border-left: 2px solid var(--accent); padding: 8px 12px; background: var(--panel);">
               The architect proposed this outline from your chat history with Akhil and your prior writing on RLMs. Drag to reorder. Pin sections you want to keep.
             </p>
           </div>
         </div>
 
-        <div class="panel slide-left d-3">
+        <div class="panel slide-left d-3" data-patchable="bootstrap-evidence-rail" data-patchable-type="visible">
           <div class="panel-header">Evidence <span style="margin-left: auto; font-family: var(--code); font-size: 10px; color: var(--accent-2);">7 sources · indexed</span></div>
           <div class="panel-body">
             <div class="evidence">
@@ -439,7 +439,7 @@
               </div>
             </div>
 
-            <div style="margin-top: 24px;" class="fade-up d-6">
+            <div style="margin-top: 24px;" class="fade-up d-6 bootstrap-tension-section-wrapper" data-patchable="bootstrap-tension-section" data-patchable-type="visible">
               <div style="font-family: var(--code); font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;">Open tensions</div>
               <div class="tension">
                 <div class="head">Unresolved</div>

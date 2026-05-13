@@ -1,0 +1,39 @@
+```json
+{
+  "perspective": "skeptic",
+  "candidate": {
+    "title": "Minimal-op, tag-scoped, server-authoritative patch DSL",
+    "summary": "Allow only add/remove/replace/test, restrict every JSON Pointer to paths explicitly marked x-patchable in the variant JSON Schema, enumerate a closed allowlist of mutation targets, and require both client-side schema validation AND a server-side dry-run preview before any patch lands. Skeptic posture: assume the architect will generate a wrong patch, assume the client is compromised, assume the schema will drift — the design must survive all three.",
+    "details": "**(a) Op subset: add, remove, replace, test — NO move, NO copy.** Move/copy each carry a `from` pointer in addition to `path`, doubling the surface for path-scope violations and enabling silent cross-subtree relocation of trusted state into untrusted slots (or vice versa). Any legitimate move can be expressed as remove+add; any legitimate copy as two adds. Forcing decomposition makes intent visible in the diff and in the audit log. `test` is mandatory as an optimistic-concurrency precondition: every patch from Claude must lead with `test` ops asserting the current value at each touched path, so a stale architect view can't clobber a concurrent edit.\n\n**(b) Path scoping: pre-tagged keys only, enforced server-side.** Arbitrary JSON Pointer is rejected by default. The variant-doc JSON Schema marks each writable leaf with `x-patchable: true` and an optional `x-patch-kind` (one of: cssVar, timing, text, token, flag). The server compiles this into a regex/trie allowlist at boot. A patch op whose `path` doesn't resolve to a tagged leaf is rejected with `E_PATH_NOT_PATCHABLE` and never reaches the apply stage. Tagging in the schema (not a sidecar file) keeps the allowlist co-located with the type it describes — one source of truth.\n\n**(c) Concrete allowlist (initial v1):**\n- `/style/cssVars/<token>` — replace only; value must match `^(#[0-9a-fA-F]{3,8}|rgb\\(...\\)|[0-9.]+(px|rem|em|%|s|ms)|var\\(--...\\))$`\n- `/style/animations/<name>/{duration,delay,easing}` — replace only; duration/delay ≤ 10s; easing from enum\n- `/content/blocks/<blockId>/text` — replace only; blockId must exist; text length ≤ 8KB; no HTML tags (plain string)\n- `/tokens/colors/<name>` — add/replace; value must parse as CSS color\n- `/flags/visibility/<elementId>` — replace only; value boolean\n\n**Forbidden (explicitly): ** `/id`, `/schemaVersion`, `/createdAt`, `/author`, `/history/**`, `/viewerSessions/**`, `/system/**`, `/content/blocks/*/type`, `/content/blocks/*/id`, `/layout/**` (structural), any path containing `script`, `on*` event handlers, raw HTML fields. Block reordering is deferred to a separate non-patch DSL — JSON Patch's index semantics are too fragile for ordering operations under concurrent edits.\n\n**(d) Validation pipeline: both, server is authoritative.** Client runs (1) JSON Schema validation of the patch envelope, (2) allowlist check, (3) value-shape regexes — purely for architect ergonomics (fast rejection in the harness UI). Server independently runs the same three checks PLUS (4) `test` precondition evaluation against current doc state, (5) dry-run apply into a memory copy, (6) re-validate the post-patch doc against the full schema, (7) compute a blast-radius metric (nodes touched, char delta in text, total bytes changed) and require human approval if it exceeds thresholds (e.g., >3 nodes or >500 char delta). Only then commit. Client validation is convenience; server validation is the trust boundary.",
+    "details_note": "If a future op needs to exceed this subset (e.g., block reorder), introduce a new top-level operation type — don't widen the JSON Patch op subset."
+  },
+  "scores": {
+    "safety_blast_radius": 9,
+    "expressiveness_for_real_edits": 7,
+    "implementation_simplicity": 6,
+    "auditability_and_reviewability": 9,
+    "validation_layering": 10,
+    "schema_evolvability": 6,
+    "architect_ergonomics": 6,
+    "concreteness_of_answer": 9
+  },
+  "weighted_total": 7.97,
+  "gaps": [
+    "Block reorder is punted to a future non-patch DSL — real architects will want to reorder content blocks, and forcing remove+add at indices is brittle under concurrent edits. The skeptic answer pays an expressiveness cost here that a synthesizer should revisit.",
+    "Schema evolvability is under-specified: when x-patchable tags change between schema versions, in-flight patches authored against vN may apply to a vN+1 doc. Need a patch-envelope `schema_version` field and a server-side compatibility matrix, not addressed above.",
+    "The server-side dry-run + render-preview is hand-waved as 'apply into memory copy' — real implementation needs an isolated renderer (the variant doc drives a live UI), and that sandbox is non-trivial. Estimated effort is hidden in the implementation_simplicity score."
+  ],
+  "evidence": [
+    {
+      "claim": "RFC 6902 defines exactly six operations (add, remove, replace, move, copy, test); move and copy each carry a `from` pointer in addition to `path`, expanding the authorization surface for any path-scoping policy.",
+      "source_url": "https://datatracker.ietf.org/doc/html/rfc6902",
+      "supporting_quote": "Operation objects MUST have exactly one 'op' member, whose value indicates the operation to perform. Its value MUST be one of 'add', 'remove', 'replace', 'move', 'copy', or 'test'."
+    },
+    {
+      "claim": "RFC 6902's `test` operation is explicitly intended as a precondition gate, enabling optimistic concurrency control within a single patch document.",
+      "source_url": "https://datatracker.ietf.org/doc/html/rfc6902#section-4.6",
+      "supporting_quote": "The 'test' operation tests that a value at the target location is equal to a specified value."
+    }
+  ]
+}
+```

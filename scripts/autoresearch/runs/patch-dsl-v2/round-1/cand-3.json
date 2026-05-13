@@ -1,0 +1,44 @@
+```json
+{
+  "perspective": "historian",
+  "candidate": {
+    "title": "Four-op RFC 6902 subset + x-patchable-tagged allowlist + dual-layer validation (the Kubernetes-strategic-merge lesson, applied)",
+    "summary": "Adopt the smallest op vocabulary that history has shown to be safe under untrusted authorship: add/remove/replace plus test-as-precondition. Forbid move/copy outright. Constrain JSON Pointers to paths the variant doc's schema has explicitly tagged x-patchable: true, and validate every patch twice — Ajv on the client for fast feedback, and a server-side dry-run apply + diff preview before commit.",
+    "details": "Three historical episodes drive this design.\n\n(1) RFC 6902 §4.4–4.5 (move/copy) has been the source of repeated atomicity bugs in patch consumers: move's `from` and `path` are evaluated in the post-prior-ops state, so a patch sequence can silently relocate a subtree the architect never reasoned about. Kubernetes eventually constrained mutations via strategic-merge-patch precisely because raw JSON Patch was too footgun-prone for declarative state. The four-op subset (add/remove/replace/test) is what every conservative consumer has converged on. Keep `test` — it is the canonical CAS primitive and the cheapest way to make architect-authored patches idempotent under concurrent edits.\n\n(2) Figma plugins, Notion's block API, and CodeMirror transactions all converged on the same pattern: deny by default, then tag the mutable surface explicitly. For doclayer, that means a JSON Schema annotation `x-patchable: true` on each leaf the variant doc allows architects to touch. The validator rejects any pointer that doesn't terminate at (or under) a tagged node. This is strictly stronger than a regex allowlist because it travels with the schema.\n\n(3) Concrete allowed paths for the variant doc:\n  - `/tokens/color/*` (color tokens — replace only)\n  - `/tokens/spacing/*`, `/tokens/radius/*`\n  - `/tokens/typography/{role}/{fontSize|lineHeight|weight}`\n  - `/styles/cssVariables/*` (replace only; values constrained by per-key sub-schema)\n  - `/styles/animation/{namedSequence}/{duration|easing|delay}`\n  - `/content/text/{namedElementId}` (replace only; max-length per element)\n  - `/visibility/{elementId}` (boolean show/hide)\n\n  Forbidden (no `x-patchable` tag, hard 4xx):\n  - `/structure/*` (DOM/block tree topology)\n  - `/scripts/*`, `/handlers/*`, `/eventBindings/*`\n  - `/meta/*` (doc id, version, author, createdAt)\n  - `/provenance/*`, `/audit/*`\n  - `/content/text/*` for elements without a stable id (no anonymous text edits)\n  - Anything under array indices (use named keys; arrays accept replace-whole-array only, never index-targeted add/remove — this is the move/copy lesson applied to arrays).\n\n(4) Validation pipeline — both, always. Client: Ajv with the variant-doc schema + a 30-line RFC 6902 op-and-path linter that rejects move/copy and non-`x-patchable` pointers before the patch ever leaves the browser. Server: re-run identical validation (never trust the client), then dry-run apply against the current doc, persist the resulting diff as a `PatchProposal` row, and only commit after a `test` op passes against the live HEAD. This is the defense-in-depth pattern from a decade of CSRF/XSS post-mortems: client validation is for ergonomics; server validation is the actual safety boundary.",
+    "rationale_in_one_line": "Every prior system that gave untrusted authors a JSON Patch firehose regretted it; the survivors all narrowed the ops, tagged the surface, and validated twice."
+  },
+  "scores": {
+    "safety_blast_radius": 9,
+    "expressiveness_for_real_edits": 8,
+    "implementation_simplicity": 7,
+    "auditability_and_reviewability": 9,
+    "validation_layering": 9,
+    "schema_evolvability": 8,
+    "architect_ergonomics": 7,
+    "concreteness_of_answer": 9
+  },
+  "weighted_total": 8.36,
+  "gaps": [
+    "Banning array-index ops means architects can't reorder a 10-item list without replacing the whole array — loses granular diffs and bloats patch payloads for ordering-heavy edits like nav menus or animation keyframe lists.",
+    "The x-patchable schema annotation needs tooling discipline: as the variant doc schema evolves, someone has to decide what becomes patchable, and stale tags are an invisible privilege-escalation risk. No process specified for that review.",
+    "Doesn't specify the architect-facing error UX when a patch is rejected — without good error messages, the constrained surface becomes frustrating rather than principled."
+  ],
+  "evidence": [
+    {
+      "claim": "RFC 6902 defines six operations (add, remove, replace, move, copy, test); move and copy are defined relative to the post-prior-ops document state, which is the root of common patch-sequence atomicity bugs.",
+      "source_url": "https://datatracker.ietf.org/doc/html/rfc6902",
+      "supporting_quote": "The 'from' location MUST exist for the operation to be successful. ... This operation is functionally identical to a 'remove' operation on the 'from' location, followed immediately by an 'add' operation at the target location with the value that was just removed."
+    },
+    {
+      "claim": "Kubernetes intentionally constrains JSON Patch semantics with strategic-merge-patch because raw RFC 6902 was too unsafe/unergonomic for declarative resource state — historical precedent for narrowing the op surface in production patch consumers.",
+      "source_url": "https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/",
+      "supporting_quote": "Strategic merge patch ... uses the same patching strategy as the apply command, which is different from JSON merge patch and JSON patch."
+    },
+    {
+      "claim": "JSON Schema supports vendor-prefixed keyword extensibility (e.g., x-* annotations), making `x-patchable: true` a standards-compatible way to tag mutable leaves without forking the schema language.",
+      "source_url": "https://json-schema.org/understanding-json-schema/reference/schema",
+      "supporting_quote": "JSON Schema is designed to be extensible. Any keyword not defined by the specification is ignored by validators, allowing custom annotations."
+    }
+  ]
+}
+```

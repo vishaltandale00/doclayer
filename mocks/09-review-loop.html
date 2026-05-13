@@ -1452,13 +1452,13 @@
       </div>
 
       <div class="sub-strip">
-        <span class="layout-caption cap-drafting"><span class="layout-tag">layout · <b>wide editor + inline-AI rail</b></span> <span style="color:var(--text-muted)">·</span> <span style="color:var(--text-muted)">3 agents firing inline</span></span>
-        <span class="layout-caption cap-iterate"><span class="layout-tag">harness shifted · <b>iterate mode</b></span> <span style="color:var(--text-muted)">·</span> <span style="color:var(--akhil)">with akhil's comments inline</span></span>
+        <span class="layout-caption cap-drafting"><span class="layout-tag">layout · <b data-patchable="review-loop-pitch-drafting">wide editor + inline-AI rail</b></span> <span style="color:var(--text-muted)">·</span> <span style="color:var(--text-muted)">3 agents firing inline</span></span>
+        <span class="layout-caption cap-iterate"><span class="layout-tag">harness shifted · <b data-patchable="review-loop-pitch-iterate">iterate mode</b></span> <span style="color:var(--text-muted)">·</span> <span style="color:var(--akhil)">with akhil's comments inline</span></span>
       </div>
 
       <div class="workspace-v">
         <!-- iterate-rail (visible only in P6) -->
-        <div class="vishal-iterate-rail">
+        <div class="vishal-iterate-rail" data-patchable="review-loop-iterate-rail" data-patchable-type="visible">
           <div class="sec">review feedback · §3.2 · akhil</div>
           <div class="fb-item"><span class="who">akhil · ¶2</span>lean denser here — claim+evidence not just claim</div>
           <div class="fb-item"><span class="who">akhil · ¶3</span>tighten the recursive claim, it's doing too much work</div>
@@ -1467,7 +1467,7 @@
         </div>
 
         <!-- Editor -->
-        <div class="editor-v">
+        <div class="editor-v" data-prose="review-loop-vishal-body">
           <span class="iterate-indicator">iterate · §3.2 · with akhil's comments</span>
 
           <h1>Meta-harnesses</h1>
@@ -1504,13 +1504,13 @@
           </p>
 
           <!-- Toast: arrives at Vishal from Akhil at P5 -->
-          <div class="toast to-vishal">
+          <div class="toast to-vishal" data-patchable="review-loop-toast-visible" data-patchable-type="visible">
             <div class="head">
               <span class="dot" style="background:var(--akhil);box-shadow:0 0 8px var(--akhil)"></span>
               <span class="who akhil">akhil</span>
               <span>· reviewed §3.2 · 3 comments</span>
             </div>
-            <div class="body">
+            <div class="body" data-patchable="review-loop-toast-body">
               <span class="crit">1 critical</span> · 2 suggestions · <em>agreed with adversarial</em>
             </div>
             <div class="actions">
@@ -1522,7 +1522,7 @@
         </div>
 
         <!-- Inline-AI agents rail (right; visible P1-P5, demoted P6) -->
-        <div class="vishal-inline-rail">
+        <div class="vishal-inline-rail" data-patchable="review-loop-inline-rail" data-patchable-type="visible">
           <div class="sec agents-active">inline ai · agents · firing</div>
           <div class="agent-card research">
             <div class="head">research</div>
@@ -1616,7 +1616,7 @@
 
       <div class="workspace-a">
         <!-- Minimized §1 strip (review-mode only) -->
-        <div class="min-strip">
+        <div class="min-strip" data-patchable="review-loop-min-strip" data-patchable-type="visible">
           <span>§1 draft</span>
           <span style="color: var(--border);">·</span>
           <span class="body">"reasoning language models aren't a new species; they're what happens when…"</span>
@@ -1624,7 +1624,7 @@
         </div>
 
         <!-- Left rail: drafting OR review flags -->
-        <div class="akhil-leftrail">
+        <div class="akhil-leftrail" data-patchable="review-loop-akhil-leftrail" data-patchable-type="visible">
           <div class="lr-drafting">
             <div class="sec">tension tracker · §1</div>
             <div style="padding:10px;background:linear-gradient(180deg, #1c1614 0%, var(--panel-2) 100%);border:1px solid #ffb86b33;border-radius:var(--r);margin-bottom:8px;font-size:11px;">
@@ -1673,10 +1673,10 @@
         <!-- Editor -->
         <div class="editor-a">
           <span class="draft-indicator">drafting §1</span>
-          <span class="review-banner">harness shifted · review mode · §3.2 from vishal</span>
+          <span class="review-banner" data-patchable="review-loop-review-banner">harness shifted · review mode · §3.2 from vishal</span>
 
           <!-- Layer 1: Akhil's own §1 drafting (default, P0-P2 & P6-P7) -->
-          <div class="layer-drafting">
+          <div class="layer-drafting" data-prose="review-loop-akhil-body">
             <h1>Meta-harnesses</h1>
             <div class="subtitle">Article 2 · collab loop · drafting §1</div>
 
@@ -1696,7 +1696,7 @@
           </div>
 
           <!-- Layer 2: Vishal's §3.2 chunk for review (P3-P5) -->
-          <div class="layer-review">
+          <div class="layer-review" data-prose="review-loop-review-body">
             <h1 style="font-size:15px;color:var(--text-muted);margin-bottom:14px;letter-spacing:0.04em;text-transform:uppercase;font-family:var(--code);font-weight:500;">reviewing · §3.2 · 240 words</h1>
 
             <h2>3.2 The chassis is the contract</h2>

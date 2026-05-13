@@ -292,16 +292,16 @@
 </head>
 <body>
 <div class="index-wrap">
-  <div style="font-family: var(--code); font-size: 12px; color: var(--accent); letter-spacing: 0.1em; margin-bottom: 16px; text-transform: uppercase;">
+  <div class="series-kicker-row" data-patchable="series-kicker" style="font-family: var(--code); font-size: 12px; color: var(--accent); letter-spacing: 0.1em; margin-bottom: 16px; text-transform: uppercase;">
     <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);margin-right:8px;vertical-align:middle;animation:pulse 2.4s ease-in-out infinite;"></span>doclayer / mocks
   </div>
-  <h1>The doc that <span class="accent">becomes</span> the reader's harness.</h1>
-  <div style="font-family: var(--code); font-size: 12.5px; color: var(--text-muted); letter-spacing: 0.04em; margin: -4px 0 18px;"><span style="color:var(--text-2);">Two writers in their own lanes.</span> One series, many agents.</div>
-  <p class="lede">
+  <h1 data-prose="index-hero">The doc that <span class="accent">becomes</span> the reader's harness.</h1>
+  <div class="series-subtitle" data-patchable="series-subtitle" style="font-family: var(--code); font-size: 12.5px; color: var(--text-muted); letter-spacing: 0.04em; margin: -4px 0 18px;"><span style="color:var(--text-2);">Two writers in their own lanes.</span> One series, many agents.</div>
+  <p class="lede" data-patchable="series-lede">
     A meta-harness for collaborative writing. The editor reshapes itself per phase, per author, and per task. When you publish, the article itself is a harness — adapting to each reader's prior knowledge.
   </p>
 
-  <div class="vs-frame">
+  <div class="vs-frame" data-patchable="vs-frame" data-patchable-type="visible">
     <div class="row"><span class="who">Notion</span><span>stores prose.</span></div>
     <div class="row"><span class="who">Substack</span><span>publishes prose.</span></div>
     <div class="row"><span class="who us">doclayer</span><span>ships the <em>grammar</em> the reader's browser binds against.</span></div>
@@ -341,8 +341,8 @@
       <div class="lc-play">▶</div>
       <div class="lc-text">
         <div class="lc-num"><span class="pip"></span>FLOW · 85s playthrough · the doc born and shipped</div>
-        <h3>The whole lifecycle in one continuous reel.</h3>
-        <p>A series of 4 articles. Two writers in their own lanes. Agents orchestrating research, adversarial review, and visual grounding. Watch the trajectory roll out, then zoom into one article shipping end-to-end.</p>
+        <h3 data-patchable="lifecycle-card-title">The whole lifecycle in one continuous reel.</h3>
+        <p data-patchable="lifecycle-card-blurb">A series of 4 articles. Two writers in their own lanes. Agents orchestrating research, adversarial review, and visual grounding. Watch the trajectory roll out, then zoom into one article shipping end-to-end.</p>
         <div class="lc-strip">
           <span class="pl">PLAN</span><span class="arr">→</span>
           <span class="dr">DRAFT</span><span class="arr">→</span>
@@ -354,9 +354,9 @@
     </div>
   </a>
 
-  <div class="next-strip">
+  <div class="next-strip" data-patchable="next-strip" data-patchable-type="visible">
     <span class="label">what's next</span>
-    <div class="body">
+    <div class="body" data-patchable="next-strip-body">
       Dogfooded build with <b>Akhil</b>, shipping the meta-harness article series as the launch artifact.
       6-week v1: 2 authors, 1 doc, 5 phase manifests, 1 published reader-harness on <b>doclayer.live</b>.
     </div>

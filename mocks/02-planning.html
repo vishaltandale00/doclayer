@@ -1105,13 +1105,13 @@
       <div class="shell-head">
         <div class="avatar" title="Vishal">V</div>
         <span class="who">Vishal</span>
-        <span class="prior-pill-tag" title="architect input — Vishal's prior">builder · concrete-first</span>
-        <span class="layout-tag">layout · <b>editor + evidence rail</b></span>
+        <span class="prior-pill-tag" data-patchable="planning-vishal-prior" title="architect input — Vishal's prior">builder · concrete-first</span>
+        <span class="layout-tag">layout · <b data-patchable="planning-vishal-layout">editor + evidence rail</b></span>
       </div>
       <div class="shell-body">
         <!-- Editor (with Vishal's cursor + his typed evidence-flavored note) -->
         <div class="plan-pane editor-pane">
-          <div class="editor" id="vishal-editor">
+          <div class="editor" id="vishal-editor" data-prose="planning-vishal-body">
             <h1 class="fade-up d-1">Meta-harnesses</h1>
             <div class="subtitle fade-up d-2">A series, target: AI engineers and builders.</div>
 
@@ -1128,7 +1128,7 @@
         </div>
 
         <!-- Evidence rail (right) — Vishal's prominent panel -->
-        <div class="plan-pane evidence-pane">
+        <div class="plan-pane evidence-pane" data-patchable="planning-evidence-pane" data-patchable-type="visible">
           <div class="sec">
             evidence
             <span class="faiss-counter" title="Sources indexed in this doc's evidence panel">
@@ -1171,7 +1171,7 @@
 
     <!-- ============================ SYNC GUTTER ============================ -->
     <div class="twoup-gutter">
-      <div class="twoup-gutter-caption">shared outline · shared chain · <b>two harnesses</b></div>
+      <div class="twoup-gutter-caption" data-patchable="planning-gutter-caption">shared outline · shared chain · <b>two harnesses</b></div>
     </div>
 
     <!-- ============================ AKHIL'S SHELL ============================ -->
@@ -1179,12 +1179,12 @@
       <div class="shell-head">
         <div class="avatar akhil" title="Akhil">A</div>
         <span class="who">Akhil</span>
-        <span class="prior-pill-tag" title="architect input — Akhil's prior">claim-first · evals advocate</span>
-        <span class="layout-tag">layout · <b>tension rail + editor</b></span>
+        <span class="prior-pill-tag" data-patchable="planning-akhil-prior" title="architect input — Akhil's prior">claim-first · evals advocate</span>
+        <span class="layout-tag">layout · <b data-patchable="planning-akhil-layout">tension rail + editor</b></span>
       </div>
       <div class="shell-body">
         <!-- Tension rail (left) — Akhil's prominent panel, with citation-card -->
-        <div class="plan-pane tension-pane">
+        <div class="plan-pane tension-pane" data-patchable="planning-tension-pane" data-patchable-type="visible">
           <div class="sec">tension tracker</div>
           <div class="tensions-stack" style="display:flex; flex-direction:column; gap:8px;">
             <div class="tension fade-up d-5 resolving">
@@ -1216,7 +1216,7 @@
             </div>
           </div>
 
-          <div class="density-mini-akhil" title="claim-density (Akhil-only meter)">
+          <div class="density-mini-akhil" data-patchable="planning-density-mini" data-patchable-type="visible" title="claim-density (Akhil-only meter)">
             <span>§3 density</span>
             <span class="bar"><span class="fill"></span></span>
             <span class="num">2.8</span><span style="color:var(--text-muted);">/3</span>
@@ -1226,7 +1226,7 @@
         <!-- Editor (with Akhil's cursor) -->
         <div class="plan-pane editor-pane">
           <span class="reading-ind">reading §5 evals</span>
-          <div class="editor" id="akhil-editor">
+          <div class="editor" id="akhil-editor" data-prose="planning-akhil-body">
             <h1 class="fade-up d-1">Meta-harnesses</h1>
             <div class="subtitle fade-up d-2">A series, target: AI engineers and builders.</div>
 

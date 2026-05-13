@@ -1137,7 +1137,7 @@
 
       <div class="harness-strip">
         <span class="phase draft">DRAFT</span>
-        <span class="prior-pill-tag vishal" title="Architect input — Vishal's prior">
+        <span class="prior-pill-tag vishal" data-patchable="multiplayer-vishal-prior" title="Architect input — Vishal's prior">
           <span class="label">prior ·</span> builder · concrete-first · multiplayer fanboy
         </span>
         <ol class="lifecycle-ribbon" aria-label="document lifecycle">
@@ -1158,7 +1158,7 @@
 
       <!-- Vishal's sub-strip: layout tag, no density meter (wide editor) -->
       <div class="sub-strip">
-        <span class="layout-tag">layout · <b>wide-editor + evidence + voice-mirror</b></span>
+        <span class="layout-tag">layout · <b data-patchable="multiplayer-vishal-layout">wide-editor + evidence + voice-mirror</b></span>
         <span style="color: var(--text-muted);">·</span>
         <span style="color: var(--text-muted);">density meter <span style="color: var(--text-2);">muted</span> (you prefer exploration mid-draft)</span>
       </div>
@@ -1166,7 +1166,7 @@
       <!-- Workspace: wide editor + evidence rail right + voice mirror bottom -->
       <div class="workspace-v">
         <!-- Editor (wide) -->
-        <div class="editor-v">
+        <div class="editor-v" data-prose="multiplayer-vishal-body">
           <h1>Meta-harnesses</h1>
           <div class="subtitle">A series, target: AI engineers and builders.</div>
 
@@ -1182,13 +1182,13 @@
           <!-- Vishal-only "stuck on framing?" suggestion (15–19s) -->
           <div class="stuck-suggestion">
             <span class="pulse"></span>
-            <span class="body"><em>stuck on framing?</em> the architect noticed you've been still 4s on a paragraph that's mid-claim. try restating §3 as a one-line wedge first?</span>
+            <span class="body" data-patchable="multiplayer-stuck-suggestion">stuck on framing? the architect noticed you've been still 4s on a paragraph that's mid-claim. try restating §3 as a one-line wedge first?</span>
             <span class="dismiss">esc · dismiss</span>
           </div>
         </div>
 
         <!-- Evidence rail (right, narrow) -->
-        <div class="pane evidence-rail">
+        <div class="pane evidence-rail" data-patchable="multiplayer-evidence-rail" data-patchable-type="visible">
           <div class="pane-header">Evidence <span class="pinned-by vishal">pinned · vishal</span></div>
           <div class="pane-body">
             <div class="ev-card">
@@ -1216,7 +1216,7 @@
         </div>
 
         <!-- Voice mirror (bottom, full width of editor column) -->
-        <div class="voice-mirror">
+        <div class="voice-mirror" data-patchable="multiplayer-voice-mirror" data-patchable-type="visible">
           <div class="mh">voice mirror · <b>akhil's last 2 paragraphs</b> · so you can match section voice</div>
           <div class="vm-row">
             <span class="who">akhil · 4 min ago</span>
@@ -1284,7 +1284,7 @@
 
       <div class="harness-strip">
         <span class="phase draft">DRAFT</span>
-        <span class="prior-pill-tag akhil" title="Architect input — Akhil's prior">
+        <span class="prior-pill-tag akhil" data-patchable="multiplayer-akhil-prior" title="Architect input — Akhil's prior">
           <span class="label">prior ·</span> claim-first · evals advocate · dense paragraphs
         </span>
         <ol class="lifecycle-ribbon" aria-label="document lifecycle">
@@ -1305,8 +1305,8 @@
 
       <!-- Akhil's sub-strip: density score visible (he's drafting §1 claim-first) -->
       <div class="sub-strip">
-        <span class="layout-tag">drafting · <b>§1 RLMs framing</b> · claim-first paragraphs</span>
-        <span class="density-mini" title="this section's claim-density">
+        <span class="layout-tag">drafting · <b data-patchable="multiplayer-akhil-layout">§1 RLMs framing</b> · claim-first paragraphs</span>
+        <span class="density-mini" data-patchable="multiplayer-density-mini" data-patchable-type="visible" title="this section's claim-density">
           <span>§1 claim-density</span>
           <span class="bar-mini"><span class="fill"></span></span>
           <span class="num" id="dscore-mini">2.8</span><span style="color: var(--text-muted);">/ 3</span>
@@ -1316,7 +1316,7 @@
       <!-- Workspace: density+tension on left, narrow editor center, comment-composer right -->
       <div class="workspace-a">
         <!-- Akhil's left rail: density meter + tension tracker for his own §1 drafting -->
-        <div class="akhil-leftrail">
+        <div class="akhil-leftrail" data-patchable="multiplayer-leftrail" data-patchable-type="visible">
           <div class="sec">density meter · §1 (drafting)</div>
           <div class="density-block">
             <div class="label">
@@ -1343,7 +1343,7 @@
         </div>
 
         <!-- Editor (narrow) — Akhil drafts his own section in parallel -->
-        <div class="editor-a">
+        <div class="editor-a" data-prose="multiplayer-akhil-body">
           <span class="reading-indicator">drafting §1</span>
 
           <h1>Meta-harnesses</h1>
@@ -1360,7 +1360,7 @@
         </div>
 
         <!-- Akhil's right rail: review queue (Vishal's drafts routed in for review) -->
-        <div class="akhil-rightrail">
+        <div class="akhil-rightrail" data-patchable="multiplayer-rightrail" data-patchable-type="visible">
           <div class="sec">review queue · from vishal</div>
           <div class="composer">
             <div class="who">akhil · reviewing</div>
